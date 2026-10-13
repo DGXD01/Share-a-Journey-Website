@@ -1,0 +1,13 @@
+# Share-a-Journey local demo — ignore list
+# Nothing here is needed to run the site; these are editor / OS / tool leftovers.
+
+.vscode/
+.idea/
+*.code-workspace
+Thumbs.db
+desktop.ini
+.DS_Store
+npm-debug.log*
+node_modules/
+*.tmp
+~$*

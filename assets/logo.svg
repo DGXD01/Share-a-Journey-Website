@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="Share-a-Journey">
+  <circle cx="16" cy="16" r="15" fill="#248879"></circle>
+  <path d="M8.5 20.5c3.5 0 3.5-9 7-9s3.5 9 8 9" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"></path>
+  <circle cx="9" cy="20.5" r="2.4" fill="#ffffff"></circle>
+  <circle cx="23" cy="20.5" r="2.4" fill="#ffffff"></circle>
+</svg>
