@@ -1,0 +1,7 @@
+postId,ownerAlias,postType,name,phone,email,origin,destination,daysAhead,time,notes
+P001,adam,driver,Adam Wilson,+64 21 555 0102,adam.wilson@example.com,Auckland,Hamilton,7,08:30,One way trip. One small bag per passenger.
+P002,mia,driver,Mia Chen,+64 21 555 0103,mia.chen@example.com,Auckland,Hamilton,7,09:00,Flexible departure time if we agree the day before.
+P003,tom,driver,Tom Reed,+64 21 555 0104,tom.reed@example.com,Auckland,Hamilton,7,10:00,Happy to share fuel costs.
+P004,zoe,passenger,Zoe Parker,+64 21 555 0105,zoe.parker@example.com,Wellington,Palmerston North,8,09:30,"Looking for a driver. ""Morning preferred."""
+P005,liam,passenger,Liam Scott,+64 21 555 0106,liam.scott@example.com,Christchurch,Dunedin,8,11:00,Looking for transport with room for one suitcase.
+P006,emma,driver,Emma Brown,+64 21 555 0107,emma.brown@example.com,Tauranga,Rotorua,9,14:00,"Day trip, back the same evening."
