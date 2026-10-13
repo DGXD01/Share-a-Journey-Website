@@ -53,6 +53,21 @@ body {
   line-height: 1.5;
 }
 
+/* Home page backplate: the supplied photograph is pinned to the viewport, scaled
+   to cover it and anchored to the right edge. On a window narrower than the
+   picture the left of the frame is cropped, while the top and bottom edges stay
+   flush with the top and bottom of the page. The picture is held at 30% opacity
+   and every white panel of the interface is layered above it. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: url("../assets/journey-backdrop.jpg") no-repeat right center / cover;
+  opacity: .3;
+  pointer-events: none;
+}
+
 h1, h2, h3, h4 { margin: 0; line-height: 1.25; font-weight: 650; }
 h1 { font-size: 2rem; letter-spacing: -.01em; }
 h2 { font-size: 1.2rem; }
