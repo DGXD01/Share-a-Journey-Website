@@ -1,5 +1,27 @@
 # 网页设计作业 1：BlueFish Media Design WebQuest
 
+## 作品入口（Share-a-Journey 演示站）
+
+本仓库除本作业说明外，还包含第七组客户 **Share-a-Journey** 的网站作品，入口如下：
+
+| 内容 | 位置 |
+|---|---|
+| 网站首页（入口文件） | `index.html` |
+| 样式表 / 脚本 | `css/style.css`、`js/app.js`、`js/store.js`、`js/rules.js`、`js/ui.js` |
+| 演示数据 | `data/posts_seed.csv` |
+| 网站说明（玩法、运行方式、目录结构） | `docs/Share-a-Journey-README.md` |
+| 设计与开发文档 | `Share-a-Journey_开发文档.md` |
+| 界面截图 | `docs/screenshots/` |
+
+打开方式（必须通过 `http://` 访问，不要直接双击 `index.html`）：
+
+| 方式 | 操作 | 地址 |
+|---|---|---|
+| 仓库自带静态服务器 | 在仓库根目录执行 `node tools/serve.js 5599` | `http://127.0.0.1:5599/index.html?demo=1` |
+| VS Code Live Server | 右键 `index.html` → Open with Live Server | `http://127.0.0.1:5500/index.html?demo=1` |
+
+带 `?demo=1` 会显示演示身份切换工具，去掉则走真实用户路径。
+
 ## 项目背景
 
 本次作业以 BlueFish Media Design 设计团队成员的身份完成。我们需要选择一名客户，分析该客户所在领域已有的竞争网站，再根据客户的业务特点和目标受众，提出一份合适的页面布局设计方案。
