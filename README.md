@@ -1,8 +1,8 @@
-# Share-a-Journey · 单人三天 localhost 演示版（DAY 1 已完成）
+# Share-a-Journey · 单人三天 localhost 演示版（DAY 1 + DAY 2 已完成）
 
 > 需求基线：《第七组 Share-a-Journey 功能页面说明》V1.0
 > 施工基线：《Share-a-Journey_开发文档.md》V3.1（本仓库根目录）
-> 本次交付：**DAY 1 —— 效果图 01 / 02 / 03 / 04 对应的可用网页 + 数据层与状态机骨架**
+> 当前进度：**DAY 1 搭建 01/02/03/04 → DAY 2 打通 05–09 业务闭环**；剩 DAY 3 视觉收口与交付打包
 
 ---
 
@@ -14,9 +14,11 @@
 - 首次填写一次个人资料，之后自动复用；
 - 四条件筛选（Origin / Destination / Date / Post Type）与三列卡片浏览；
 - 公开详情弹窗（含发布者公开联系方式）与单条 / 批量申请；
-- 每条申请都有**独立 Record ID + Management Code**，可用管理码重新打开记录；
-- My Activity 三标签（My Posts / My Applications / Received Applications）读取真实本地数据；
-- 单一 `localStorage` 快照（`sj_demo_state_v2`），刷新、重开浏览器内容一致；
+- 每条申请都有**独立 Record ID + Management Code**，可用管理码重新打开记录并执行可用操作；
+- 发布者审批：**Accept** 一次保存完成四路联动（本申请 `Accepted`、发布 `Confirmed` 并离开 Browse、同发布其他申请 `Not Selected`、该申请人在其他发布的全部 `Pending` 自动 `Automatically Cancelled` 并写明原因）；
+- **Decline / Withdraw / Cancel Post / Cancel Confirmed Journey** 都是真实状态变更，取消已确认同行会让未过期的发布重新公开，终态记录永不复活；
+- My Activity 三标签（My Posts / My Applications / Received Applications）读取真实本地数据，含 Accepted 绿色横幅与逐条原因；
+- 单一 `localStorage` 快照（`sj_demo_state_v2`），刷新、重开浏览器内容一致；到期记录自动 `Expired` 并停止申请/审批；
 - `?demo=1` 提供演示身份切换与 Reset Demo Data。
 
 **没有后端、没有数据库、没有登录、没有公网部署**；跨浏览器 / 跨设备共享不属于本版能力，界面文案统一为 `this browser / local demo`，不承诺服务器同步。
@@ -52,17 +54,18 @@ WebAssignment1/                     ← 仓库根目录（即 Live Server 根目
 │   └── app.js                      # 事件协调、视图切换、pendingIntent、演示身份、初始化
 ├── data/posts_seed.csv             # 六条虚构演示行程（daysAhead 相对当天生成未来日期）
 ├── docs/
-│   ├── REQUIREMENTS.md             # 20 项功能需求清单与实现位置
+│   ├── REQUIREMENTS.md             # 20 项功能需求清单与实现位置（含记录动作权限表）
 │   ├── VISUAL_REFERENCE.md         # 效果图 01–10 → 实现映射与视觉取舍
-│   ├── TEST_CASES.md               # 20 项实测记录（PASS / FAIL / DEMO_ONLY / DAY2）
-│   ├── DEMO_SCRIPT.md              # PPT 演示剧本（含可用管理码）
-│   ├── DAY1_BUILD_NOTES.md         # 施工记录、发现并修复的缺陷、DAY 2 接续点
+│   ├── TEST_CASES.md               # 20 项实测记录（PASS / DEMO_ONLY）与证据索引
+│   ├── DEMO_SCRIPT.md              # PPT 演示剧本九步（含可用管理码）
+│   ├── DAY1_BUILD_NOTES.md         # DAY 1 施工记录与缺陷修复
+│   ├── DAY2_BUILD_NOTES.md         # DAY 2 施工记录、状态机取舍与 DAY 3 接续点
 │   ├── reference/                  # 放 01–10 效果图 PNG（设计参考，不参与运行）
-│   └── screenshots/                # 本版真机截图证据（自动化生成）
+│   └── screenshots/                # 真机截图证据（自动化生成）
 └── tools/
     ├── serve.js                    # 仅用于本地验证的静态服务器
-    ├── selfcheck.js                # 无浏览器：store + rules 的 76 项断言
-    └── e2e.js                      # 真 Chrome：123 项端到端断言 + 截图
+    ├── selfcheck.js                # 无浏览器：store + rules 的 130 项断言
+    └── e2e.js                      # 真 Chrome：182 项端到端断言 + 截图
 ```
 
 ---
@@ -70,38 +73,32 @@ WebAssignment1/                     ← 仓库根目录（即 Live Server 根目
 ## 4. 自检与验收证据
 
 ```bash
-node tools/selfcheck.js     # 76 passed, 0 failed —— 纯逻辑（CSV/日期/状态机/管理码/到期）
+node tools/selfcheck.js     # 130 passed, 0 failed —— 纯逻辑（CSV/日期/状态机/审批联动/管理码/到期）
 node tools/serve.js 5599    # 另开一个终端
-node tools/e2e.js           # 123 passed, 0 failed —— 真浏览器全流程 + 截图
+node tools/e2e.js           # 182 passed, 0 failed —— 真浏览器全流程 + 截图
 ```
 
-`tools/e2e.js` 会在真实 Chrome/Edge 上完整走一遍演示剧本：筛选、选卡、批量申请、刷新页面验证持久化、发布新行程、管理码错误/正确、切换身份看申请者资料、手机窄屏、键盘 Escape 与方向键、Reset，并断言**控制台零异常**。截图输出到 `docs/screenshots/`。
+`tools/e2e.js` 会在真实 Chrome/Edge 上完整走一遍演示剧本：筛选、选卡、批量申请、刷新页面验证持久化、发布新行程、管理码错误/正确、**发布者同意并观察 Not Selected 与自动取消**、取消已确认同行后发布恢复公开、拒绝、撤回、取消发布、手机窄屏、键盘 Escape 与方向键、Reset，并断言**控制台零异常**。截图输出到 `docs/screenshots/`。
 
 ---
 
-## 5. 本版（DAY 1）完成到什么程度
+## 5. 完成程度
 
-**已完成并且是真操作（非写死文案）**
+**图 01–10 的全部界面类别与业务闭环均已实现，并且都是真操作（非写死文案）**
 
-- 图 01：顶栏双主视图、四条件筛选、三列卡片、同类型多选、绿色操作条、My Activity 快捷入口；
-- 图 02：首次 Your Details，校验、保存一次、`Save and Continue` 恢复原动作、`Cancel` 不误发；
-- 图 03：Post a Journey 双类型大单选卡、只读已存联系方式、路线/日期/时间/Notes、必填与同城/过去时间校验、发布成功给出独立 Record ID + 管理码；
-- 图 04：Journey Details 双列路线、日期时间、发布者、公开电话邮箱、Notes、Apply（仅变 Pending，发布不隐藏）；
-- 图 05 结构：逐条结果卡（Record ID / Management Code / Copy / Pending / View My Applications），批量支持部分失败逐条说明；
-- 图 06 数据：My Activity 三标签 + 真实数量徽章 + 状态摘要 + Refresh Status（重新读取本地快照）；
-- 图 08 数据（只读）：发布者视角的 Received Applications，显示申请者联系方式；
-- 图 09 核心：管理码校验（错码不显示任何记录，正确码打开记录摘要）；
-- 图 10 内容：How It Works 六步与本机边界说明；
-- 到期规则：启动与 Refresh 时把已过期发布标为 `Expired` 并停止申请，历史记录保留。
+- 01 浏览与批量选择；02 首次资料；03 发布（双类型 + 校验 + 独立凭据）；04 详情与一键申请；
+- 05 逐条结果卡（含部分失败与 Copy）；06 My Activity 三标签与状态摘要；
+- 07 Accepted 横幅 + 自动取消原因；08 发布者审批（Accept / Decline / Cancel Post）；
+- 09 管理码校验与记录动作；10 How It Works 六步与本机边界；
+- 到期规则、终态不复活、重复操作防护、错误管理码不泄露记录。
 
-**明确留到 DAY 2（界面上不伪装、按钮禁用并写明原因）**
+**明确的能力边界（不得在报告里含糊）**
 
-- Accept / Decline 审批状态机（图 08 按钮、图 07 的 `Accepted` 横幅）；
-- 一条获批后发布隐藏、其他申请 `Not Selected`、同申请人其他 `Pending` 自动取消（图 07/08 联动）；
-- Withdraw / Cancel Post / Cancel Confirmed Journey；
-- 上述动作在 My Activity 中的完整状态横幅与操作列。
+- 需求 10 是同一浏览器内的**顺序冲突模拟**，不具备真实客户端并发原子性（`DEMO_ONLY`）；
+- 需求 19 的**跨浏览器凭据恢复不可用**，数据只在本机这个浏览器（`DEMO_ONLY`）；
+- 管理码校验发生在浏览器里，不等于生产级安全隔离。
 
-详见 `docs/TEST_CASES.md`（逐项实测）与 `docs/DAY1_BUILD_NOTES.md`（接续点）。
+详见 `docs/TEST_CASES.md`（逐项实测）与 `docs/DAY2_BUILD_NOTES.md`（状态机取舍与 DAY 3 接续点）。
 
 ---
 

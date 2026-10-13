@@ -17,7 +17,9 @@ SJ.app = (function () {
     appliedFilters: { origin: '', destination: '', date: '', postType: '' },
     selectedPostIds: new Set(),
     pendingIntent: null,
-    currentDetailsPostId: null
+    currentDetailsPostId: null,
+    currentReceivedPostId: null,
+    managedRecord: null
   };
 
   var isDemoMode = false;
@@ -366,8 +368,131 @@ SJ.app = (function () {
   }
 
   function openReceived(postId, trigger) {
+    uiState.currentReceivedPostId = postId;
     SJ.ui.renderReceivedDialog(currentState(), postId);
     SJ.ui.openDialog('received-dialog', trigger);
+  }
+
+  /* One commit, then every open surface is re-rendered from the new snapshot:
+     Browse cards, My Activity, the details dialog, the publisher dialog and the
+     management view. Nothing keeps a stale copy of the old status. */
+  function commitAction(result, messageOverride) {
+    if (!result.ok) {
+      SJ.ui.toast(result.error, 'error');
+      refreshOpenDialogs();
+      return false;
+    }
+    var commit = SJ.store.commitState(result.state);
+    if (!commit.ok) {
+      SJ.ui.toast(commit.error, 'error');
+      return false;
+    }
+    renderAll();
+    refreshOpenDialogs();
+    var message = messageOverride || result.message;
+    if (message) { SJ.ui.toast(message, 'success'); }
+    return true;
+  }
+
+  function refreshOpenDialogs() {
+    var state = currentState();
+    if (SJ.ui.isOpen('received-dialog') && uiState.currentReceivedPostId) {
+      SJ.ui.renderReceivedDialog(state, uiState.currentReceivedPostId);
+    }
+    if (SJ.ui.isOpen('details-dialog') && uiState.currentDetailsPostId) {
+      SJ.ui.renderDetails(state, uiState.currentDetailsPostId);
+    }
+    if (SJ.ui.isOpen('manage-dialog') && uiState.managedRecord) {
+      SJ.ui.renderManageResult(state, SJ.rules.verifyManagementCode(
+        state, uiState.managedRecord.recordId, uiState.managedRecord.code));
+    }
+  }
+
+  function handleAcceptApplication(applicationId) {
+    if (busy) { return; }
+    busy = true;
+    try {
+      var result = SJ.rules.acceptApplication(currentState(), { applicationId: applicationId });
+      if (!result.ok) {
+        SJ.ui.toast(result.error, 'error');
+        refreshOpenDialogs();
+        return;
+      }
+      var extra = [];
+      if (result.notSelected.length > 0) {
+        extra.push(result.notSelected.length + ' other applicant(s) marked Not Selected');
+      }
+      if (result.autoCancelled.length > 0) {
+        extra.push(result.autoCancelled.length + ' other pending application(s) of this traveller automatically cancelled');
+      }
+      commitAction(result, result.message + (extra.length > 0 ? ' ' + extra.join('; ') + '.' : ''));
+    } finally {
+      busy = false;
+    }
+  }
+
+  function handleDeclineApplication(applicationId) {
+    if (busy) { return; }
+    busy = true;
+    try {
+      commitAction(SJ.rules.declineApplication(currentState(), { applicationId: applicationId }));
+    } finally {
+      busy = false;
+    }
+  }
+
+  function handleWithdrawApplication(applicationId) {
+    if (busy) { return; }
+    busy = true;
+    try {
+      commitAction(SJ.rules.withdrawApplication(currentState(), { applicationId: applicationId }));
+    } finally {
+      busy = false;
+    }
+  }
+
+  function handleCancelPost(postId, trigger) {
+    var check = SJ.rules.canCancelPost(currentState(), postId);
+    if (!check.ok) {
+      SJ.ui.toast(check.error, 'error');
+      return;
+    }
+    var post = check.post;
+    var live = SJ.rules.applicationsOfPost(currentState(), postId).filter(function (application) {
+      return application.status === 'Pending' || application.status === 'Accepted';
+    }).length;
+
+    SJ.ui.confirmAsk({
+      title: 'Cancel this journey?',
+      message: 'Journey ' + post.postId + ' (' + post.origin + ' \u2192 ' + post.destination + ') will be hidden from Browse'
+        + (live > 0 ? ' and its ' + live + ' live application(s) will be cancelled with it.' : '.')
+        + ' Finished records keep their history.',
+      note: 'This cannot be undone: a cancelled journey does not go back to Open.',
+      confirmLabel: 'Cancel Journey',
+      cancelLabel: 'Keep it open'
+    }).then(function (confirmed) {
+      if (!confirmed) { return; }
+      commitAction(SJ.rules.cancelPost(currentState(), { postId: postId }));
+    });
+  }
+
+  function handleCancelJourney(applicationId) {
+    var check = SJ.rules.canCancelJourney(currentState(), applicationId);
+    if (!check.ok) {
+      SJ.ui.toast(check.error, 'error');
+      return;
+    }
+    SJ.ui.confirmAsk({
+      title: 'Give up this confirmed place?',
+      message: 'Application ' + applicationId + ' is confirmed. Cancelling it frees the seat'
+        + (check.post ? ' and journey ' + check.post.postId + ' becomes public again while it has not departed.' : '.'),
+      note: 'Other applicants who were Not Selected or automatically cancelled do not become active again.',
+      confirmLabel: 'Cancel Confirmed Journey',
+      cancelLabel: 'Keep my place'
+    }).then(function (confirmed) {
+      if (!confirmed) { return; }
+      commitAction(SJ.rules.cancelJourney(currentState(), { applicationId: applicationId }));
+    });
   }
 
   function requestClose(dialogId) {
@@ -404,6 +529,11 @@ SJ.app = (function () {
 
     if (dialogId === 'manage-dialog') {
       SJ.ui.resetManageDialog();
+      uiState.managedRecord = null;
+    }
+
+    if (dialogId === 'received-dialog') {
+      uiState.currentReceivedPostId = null;
     }
 
     SJ.ui.closeDialog(dialogId);
@@ -547,6 +677,7 @@ SJ.app = (function () {
     });
     $('nav-manage').addEventListener('click', function () {
       SJ.ui.resetManageDialog();
+      uiState.managedRecord = null;
       SJ.ui.openDialog('manage-dialog', $('nav-manage'));
       $('manage-record-id').focus();
     });
@@ -643,6 +774,16 @@ SJ.app = (function () {
         switchView('browse');
       } else if (action === 'copy-record') {
         copyToClipboard(actionNode.getAttribute('data-copy') || '', actionNode);
+      } else if (action === 'accept-application') {
+        handleAcceptApplication(actionNode.getAttribute('data-application-id'));
+      } else if (action === 'decline-application') {
+        handleDeclineApplication(actionNode.getAttribute('data-application-id'));
+      } else if (action === 'withdraw-application') {
+        handleWithdrawApplication(actionNode.getAttribute('data-application-id'));
+      } else if (action === 'cancel-post') {
+        handleCancelPost(actionNode.getAttribute('data-post-id'), actionNode);
+      } else if (action === 'cancel-journey') {
+        handleCancelJourney(actionNode.getAttribute('data-application-id'));
       }
     });
 
@@ -689,7 +830,10 @@ SJ.app = (function () {
         $('manage-record-id').value,
         $('manage-code').value
       );
-      SJ.ui.renderManageResult(result);
+      uiState.managedRecord = result.ok
+        ? { recordId: $('manage-record-id').value.trim(), code: $('manage-code').value.trim() }
+        : null;
+      SJ.ui.renderManageResult(currentState(), result);
       if (result.ok) {
         SJ.ui.toast('Management code verified in this browser.', 'success');
       }

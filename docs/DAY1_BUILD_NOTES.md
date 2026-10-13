@@ -36,7 +36,9 @@
 6. **新增 `tools/`**：施工文档目录里没有，但 Gate D1 需要可复现的证据，故加入静态服务器与两套断言脚本（不进页面运行时）。
 7. **效果图原图未收到**：按施工文档 §2 的文字规格实现，`docs/reference/` 已预留位置（见 `docs/VISUAL_REFERENCE.md`）。
 
-## 4. DAY 2 接续点（照着做即可，接口已留好）
+## 4. DAY 2 接续点（已完成 —— 实施记录见 `DAY2_BUILD_NOTES.md`）
+
+> 本节原本是 DAY 1 结束时写给 DAY 2 的施工清单。DAY 2 已按此实施，实际做法与差异记录在 `docs/DAY2_BUILD_NOTES.md`，下面保留原始清单以便对照。
 
 在 `js/rules.js` 增加以下纯函数，全部遵循「校验 → 计算 nextState → 返回结果」的同一形态，由 `app.js` 一次 `commitState`：
 

@@ -570,16 +570,16 @@ async function waitForApp(cdp) {
         open: document.getElementById('received-dialog').open,
         applicant: /Alex Taylor/.test(body.textContent),
         contact: /alex.taylor@example.com/.test(body.textContent),
-        acceptDisabled: buttons.filter(function (b) { return b.textContent === 'Accept'; }).every(function (b) { return b.disabled; }),
+        acceptEnabled: buttons.filter(function (b) { return b.textContent === 'Accept'; }).every(function (b) { return b.disabled === false; }),
+        acceptCount: buttons.filter(function (b) { return b.textContent === 'Accept'; }).length,
         note: document.getElementById('received-note').textContent,
         rows: body.querySelectorAll('.applicant-row').length
       };`);
     check('publisher opens Received Applications', receivedDialog.open === true);
     check('applicant contact visible to the publisher', receivedDialog.applicant && receivedDialog.contact, receivedDialog);
     check('one applicant row', receivedDialog.rows === 1, receivedDialog.rows);
-    check('Accept is still disabled in the Day 1 build', receivedDialog.acceptDisabled === true);
-    check('Day 1 scope is stated in the dialog', /Day 1 build/.test(receivedDialog.note), receivedDialog.note);
-    await cdp.shot('08_received_readonly.png');
+    check('Accept is offered to the publisher', receivedDialog.acceptCount === 1 && receivedDialog.acceptEnabled === true, receivedDialog);
+    check('the dialog explains what accepting does', /automatically cancels/.test(receivedDialog.note), receivedDialog.note);
 
     console.log('\n== How It Works (image 10 content) ==');
     await cdp.eval(`
@@ -737,7 +737,401 @@ async function waitForApp(cdp) {
     check('a refused application is reported as a failed item (requirement 06)', failureCard.failed === true, failureCard);
     check('the failed item explains the reason', /already have an active application/.test(failureCard.reason), failureCard.reason);
 
-    console.log('\n== Console health ==');
+    /* ==================================================================
+       DAY 2 — approvals, declines, withdrawals, cancellations (07 / 08 / 09)
+       ================================================================== */
+    const switchTo = async (profileId) => {
+      await cdp.eval(`
+        var select = document.getElementById('demo-person-select');
+        select.value = '` + profileId + `';
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+        return true;`);
+      await sleep(280);
+    };
+    const openActivity = async (tab) => {
+      await cdp.eval(`
+        document.getElementById('nav-activity').click();
+        document.querySelector('#activity-tabs .tab[data-tab="` + tab + `"]').click();
+        return true;`);
+      await sleep(220);
+    };
+    const resetDemo = async () => {
+      await cdp.eval(`document.getElementById('demo-reset-btn').click(); return true;`);
+      await sleep(250);
+      await cdp.eval(`document.getElementById('confirm-ok-btn').click(); return true;`);
+      await sleep(600);
+    };
+    const snapshot = async () => cdp.eval(`
+      var stored = JSON.parse(localStorage.getItem('sj_demo_state_v2'));
+      var byId = {};
+      stored.applications.forEach(function (a) { byId[a.applicationId] = a; });
+      var posts = {};
+      stored.posts.forEach(function (p) { posts[p.postId] = p; });
+      return {
+        applications: byId,
+        posts: posts,
+        statusList: stored.applications.map(function (a) { return a.applicationId + ':' + a.status; }).join(','),
+        detail: Object.keys(byId).map(function (id) {
+          return byId[id].applicationId + ':' + byId[id].status + ':' + byId[id].applicantProfileId;
+        }).join(' | ')
+      };`);
+
+    console.log('\n== DAY 2: publish the demo story (three Pending applications) ==');
+    await resetDemo();
+    check('reset gives a clean six-journey slate', (await cdp.eval(`return JSON.parse(localStorage.getItem('sj_demo_state_v2')).posts.length;`)) === 6);
+
+    await cdp.eval(`
+      document.querySelector('[data-action="view-details"][data-post-id="POST-001"]').click();
+      document.getElementById('details-apply-btn').click();
+      return true;`);
+    await sleep(300);
+    await cdp.eval(`
+      document.getElementById('profile-name').value = 'Alex Taylor';
+      document.getElementById('profile-phone').value = '+64 21 555 0101';
+      document.getElementById('profile-email').value = 'alex.taylor@example.com';
+      document.getElementById('profile-form').requestSubmit();
+      return true;`);
+    await sleep(350);
+    await cdp.eval(`
+      document.getElementById('results-dialog').close();
+      document.querySelector('input[data-action="toggle-select"][data-post-id="POST-002"]').click();
+      document.querySelector('input[data-action="toggle-select"][data-post-id="POST-003"]').click();
+      document.getElementById('apply-selected-btn').click();
+      return true;`);
+    await sleep(350);
+    await cdp.eval(`document.getElementById('results-dialog').close(); return true;`);
+    const threePending = await snapshot();
+    check('Alex holds APP-041 Pending on POST-001', threePending.applications['APP-041'].status === 'Pending');
+    check('APP-042 and APP-043 are Pending too',
+      threePending.applications['APP-042'].status === 'Pending' && threePending.applications['APP-043'].status === 'Pending');
+    check('all three journeys are still Open', threePending.posts['POST-001'].status === 'Open'
+      && threePending.posts['POST-002'].status === 'Open' && threePending.posts['POST-003'].status === 'Open');
+
+    console.log('\n== Publisher approves (image 08) ==');
+    await switchTo('PROF-ADAM');
+    await openActivity('my-posts');
+    await cdp.eval(`document.querySelector('#my-posts-list [data-action="open-received"]').click(); return true;`);
+    await sleep(320);
+    const publisherView = await cdp.eval(`
+      var body = document.getElementById('received-body');
+      var accept = body.querySelector('[data-action="accept-application"]');
+      var decline = body.querySelector('[data-action="decline-application"]');
+      return {
+        open: document.getElementById('received-dialog').open,
+        rows: body.querySelectorAll('.applicant-row').length,
+        acceptEnabled: !!accept && accept.disabled === false,
+        declineEnabled: !!decline && decline.disabled === false,
+        cancelPost: !!body.querySelector('[data-action="cancel-post"]'),
+        postBadge: body.querySelector('.record-summary-head .badge').textContent
+      };`);
+    check('publisher dialog lists the applicant', publisherView.open === true && publisherView.rows === 1, publisherView);
+    check('Accept and Decline are live controls', publisherView.acceptEnabled === true && publisherView.declineEnabled === true, publisherView);
+    check('the journey is Open before the approval', publisherView.postBadge === 'Open', publisherView.postBadge);
+    check('Cancel Post is offered to the publisher', publisherView.cancelPost === true, publisherView);
+    await cdp.shot('08_received_accept.png');
+
+    await cdp.eval(`document.querySelector('#received-body [data-action="accept-application"]').click(); return true;`);
+    await sleep(450);
+    const afterAccept = await snapshot();
+    const acceptUi = await cdp.eval(`
+      return {
+        postBadge: document.querySelector('#received-body .record-summary-head .badge').textContent,
+        rowBadges: Array.prototype.map.call(document.querySelectorAll('#received-body .applicant-actions .badge'), function (b) { return b.textContent; }).join(','),
+        acceptGone: !document.querySelector('#received-body [data-action="accept-application"]'),
+        toast: (document.querySelector('.toast') || {}).textContent || ''
+      };`);
+    check('the accepted application is Accepted', afterAccept.applications['APP-041'].status === 'Accepted');
+    check('the journey becomes Confirmed and records the application',
+      afterAccept.posts['POST-001'].status === 'Confirmed' && afterAccept.posts['POST-001'].confirmedApplicationId === 'APP-041');
+    check('the traveller\'s other Pending applications are automatically cancelled',
+      afterAccept.applications['APP-042'].status === 'Automatically Cancelled'
+      && afterAccept.applications['APP-043'].status === 'Automatically Cancelled');
+    check('the automatic cancellation writes a reason naming the journey',
+      /accepted for journey POST-001/.test(afterAccept.applications['APP-042'].reason), afterAccept.applications['APP-042'].reason);
+    check('the other publishers\' journeys are untouched',
+      afterAccept.posts['POST-002'].status === 'Open' && afterAccept.posts['POST-003'].status === 'Open');
+    check('the dialog refreshes in place', acceptUi.postBadge === 'Confirmed' && acceptUi.rowBadges === 'Accepted' && acceptUi.acceptGone === true, acceptUi);
+    check('the publisher is told what happened automatically', /automatically cancelled/.test(acceptUi.toast), acceptUi.toast);
+    await cdp.shot('08b_received_after_accept.png');
+
+    await cdp.eval(`document.getElementById('received-dialog').close(); document.getElementById('nav-browse').click(); return true;`);
+    await sleep(300);
+    const browseAfterAccept = await cdp.eval(`
+      return {
+        hasConfirmed: !!document.querySelector('.journey-card[data-post-id="POST-001"]'),
+        stillOpen: !!document.querySelector('.journey-card[data-post-id="POST-002"]'),
+        cards: document.querySelectorAll('.journey-card').length
+      };`);
+    check('the confirmed journey leaves the public list', browseAfterAccept.hasConfirmed === false && browseAfterAccept.cards === 5, browseAfterAccept);
+    check('the untouched journeys stay public', browseAfterAccept.stillOpen === true, browseAfterAccept);
+
+    console.log('\n== Traveller sees Accepted + 2 auto-cancellations (image 07) ==');
+    await switchTo('PROF-ALEX');
+    await openActivity('my-applications');
+    const alexView = await cdp.eval(`
+      var banner = document.getElementById('my-applications-banner');
+      return {
+        acceptedBanner: !!banner.querySelector('.status-banner.accepted'),
+        bannerText: banner.textContent,
+        rows: document.querySelectorAll('#my-applications-list .record-row').length,
+        badges: Array.prototype.map.call(document.querySelectorAll('#my-applications-list .badge'), function (b) { return b.textContent; }).join(','),
+        reasons: /Automatically cancelled: this applicant was accepted/.test(document.getElementById('my-applications-list').textContent),
+        cancelBtn: !!banner.querySelector('[data-action="cancel-journey"]'),
+        viewBtn: !!banner.querySelector('[data-action="view-details"]')
+      };`);
+    check('the green Accepted banner appears', alexView.acceptedBanner === true, alexView);
+    check('the banner names the confirmed journey', /confirmed for Auckland/.test(alexView.bannerText), alexView.bannerText);
+    check('the banner counts the automatic cancellations', /2 of your other application/.test(alexView.bannerText), alexView.bannerText);
+    check('three rows: 1 Accepted then 2 Automatically Cancelled',
+      alexView.rows === 3 && alexView.badges === 'Automatically Cancelled,Automatically Cancelled,Accepted', alexView.badges);
+    check('the cancelled rows keep their written reason', alexView.reasons === true, alexView);
+    check('the banner offers View and Cancel Confirmed Journey', alexView.viewBtn && alexView.cancelBtn, alexView);
+    await cdp.shot('07_accepted_banner.png');
+
+    console.log('\n== Cancel Confirmed Journey reopens the journey (requirement 13) ==');
+    await cdp.eval(`document.querySelector('#my-applications-banner [data-action="cancel-journey"]').click(); return true;`);
+    await sleep(300);
+    const cancelPrompt = await cdp.eval(`
+      return {
+        open: document.getElementById('confirm-dialog').open,
+        message: document.getElementById('confirm-message').textContent,
+        note: document.getElementById('confirm-note').textContent
+      };`);
+    check('giving up a confirmed place asks first', cancelPrompt.open === true && /becomes public again/.test(cancelPrompt.message), cancelPrompt);
+    check('the prompt warns that other records do not revive', /do not become active again/.test(cancelPrompt.note), cancelPrompt.note);
+    await cdp.eval(`document.getElementById('confirm-ok-btn').click(); return true;`);
+    await sleep(450);
+    const afterCancelJourney = await snapshot();
+    check('the confirmed application becomes Cancelled', afterCancelJourney.applications['APP-041'].status === 'Cancelled');
+    check('the journey is public again', afterCancelJourney.posts['POST-001'].status === 'Open');
+    check('terminal records do not revive',
+      afterCancelJourney.applications['APP-042'].status === 'Automatically Cancelled'
+      && afterCancelJourney.applications['APP-043'].status === 'Automatically Cancelled');
+
+    await cdp.eval(`document.getElementById('nav-browse').click(); return true;`);
+    await sleep(300);
+    const reopened = await cdp.eval(`
+      var card = document.querySelector('.journey-card[data-post-id="POST-001"]');
+      return {
+        visible: !!card,
+        selectable: card ? card.querySelector('input[data-action="toggle-select"]').disabled === false : null,
+        toggleLabel: card ? card.querySelector('.select-toggle span').textContent : ''
+      };`);
+    check('the reopened journey is listed again', reopened.visible === true, reopened);
+    check('Alex can apply again (his old record is terminal)', reopened.selectable === true && reopened.toggleLabel === 'Select', reopened);
+    await cdp.shot('07b_after_cancel_reopen.png');
+
+    console.log('\n== Requirement 10: the losing publisher cannot approve ==');
+    await switchTo('PROF-MIA');
+    await openActivity('my-posts');
+    await cdp.eval(`document.querySelector('#my-posts-list [data-action="open-received"]').click(); return true;`);
+    await sleep(320);
+    const miaView = await cdp.eval(`
+      var body = document.getElementById('received-body');
+      return {
+        rows: body.querySelectorAll('.applicant-row').length,
+        badges: Array.prototype.map.call(body.querySelectorAll('.applicant-actions .badge'), function (b) { return b.textContent; }).join(','),
+        acceptRendered: !!body.querySelector('[data-action="accept-application"]'),
+        text: body.textContent
+      };`);
+    check('the applicant row is shown as Automatically Cancelled', miaView.rows === 1 && miaView.badges === 'Automatically Cancelled', miaView);
+    check('no Accept control is offered for a cancelled application', miaView.acceptRendered === false, miaView);
+    check('the publisher can read why it was cancelled', /accepted for journey POST-001/.test(miaView.text), miaView.text);
+
+    console.log('\n== Decline (requirement 11) ==');
+    await cdp.eval(`document.getElementById('received-dialog').close(); return true;`);
+    await switchTo('PROF-LIAM');
+    await cdp.eval(`
+      document.getElementById('nav-browse').click();
+      document.querySelector('[data-action="view-details"][data-post-id="POST-002"]').click();
+      document.getElementById('details-apply-btn').click();
+      return true;`);
+    await sleep(380);
+    await cdp.eval(`document.getElementById('results-dialog').close(); return true;`);
+    const liamApplied = await snapshot();
+    const liamAppId = Object.keys(liamApplied.applications).filter(function (id) {
+      return liamApplied.applications[id].applicantProfileId === 'PROF-LIAM';
+    })[0];
+    check('Liam applies to Mia\'s journey', !!liamAppId && liamApplied.applications[liamAppId].status === 'Pending', liamApplied.statusList);
+
+    await switchTo('PROF-MIA');
+    await openActivity('my-posts');
+    await cdp.eval(`document.querySelector('#my-posts-list [data-action="open-received"]').click(); return true;`);
+    await sleep(320);
+    await cdp.eval(`
+      var rows = Array.prototype.slice.call(document.querySelectorAll('#received-body .applicant-row'));
+      var target = rows.filter(function (r) { return /Liam Scott/.test(r.textContent); })[0];
+      target.querySelector('[data-action="decline-application"]').click();
+      return true;`);
+    await sleep(450);
+    const afterDecline = await snapshot();
+    check('the publisher declines the application', afterDecline.applications[liamAppId].status === 'Declined');
+    check('the decline records a reason', /Declined by the publisher/.test(afterDecline.applications[liamAppId].reason));
+    check('the journey stays Open after a decline', afterDecline.posts['POST-002'].status === 'Open');
+    check('the accepted/cancelled history of other people is untouched', afterDecline.applications['APP-041'].status === 'Cancelled');
+
+    console.log('\n== Withdraw (requirement 11) ==');
+    await cdp.eval(`document.getElementById('received-dialog').close(); return true;`);
+    await switchTo('PROF-LIAM');
+    await cdp.eval(`
+      document.getElementById('nav-browse').click();
+      document.querySelector('[data-action="view-details"][data-post-id="POST-003"]').click();
+      document.getElementById('details-apply-btn').click();
+      return true;`);
+    await sleep(380);
+    await cdp.eval(`document.getElementById('results-dialog').close(); return true;`);
+    await openActivity('my-applications');
+    const withdrawClick = await cdp.eval(`
+      var rows = Array.prototype.slice.call(document.querySelectorAll('#my-applications-list .record-row'));
+      var pending = rows.filter(function (r) { return /Pending/.test(r.textContent); })[0];
+      var btn = pending && pending.querySelector('[data-action="withdraw-application"]');
+      if (btn) { btn.click(); }
+      return { found: !!btn };
+    `);
+    await sleep(450);
+    const afterWithdraw = await snapshot();
+    check('a Pending row offers Withdraw', withdrawClick.found === true, withdrawClick);
+    check('the application is Withdrawn', Object.keys(afterWithdraw.applications).some(function (id) {
+      return afterWithdraw.applications[id].status === 'Withdrawn' && afterWithdraw.applications[id].applicantProfileId === 'PROF-LIAM';
+    }), afterWithdraw.statusList);
+    check('the journey stays Open after a withdrawal', afterWithdraw.posts['POST-003'].status === 'Open');
+
+    console.log('\n== Cancel Post (requirement 12) ==');
+    await switchTo('PROF-TOM');
+    await openActivity('my-posts');
+    await cdp.eval(`document.querySelector('#my-posts-list [data-action="cancel-post"]').click(); return true;`);
+    await sleep(300);
+    const cancelPostPrompt = await cdp.eval(`
+      return {
+        open: document.getElementById('confirm-dialog').open,
+        message: document.getElementById('confirm-message').textContent
+      };`);
+    check('cancelling a post asks first and warns about live applications',
+      cancelPostPrompt.open === true && /hidden from Browse/.test(cancelPostPrompt.message), cancelPostPrompt);
+    await cdp.eval(`document.getElementById('confirm-ok-btn').click(); return true;`);
+    await sleep(450);
+    const afterCancelPost = await snapshot();
+    check('the journey is Cancelled', afterCancelPost.posts['POST-003'].status === 'Cancelled');
+    check('finished application history is kept', Object.keys(afterCancelPost.applications).some(function (id) {
+      return afterCancelPost.applications[id].status === 'Withdrawn';
+    }), afterCancelPost.statusList);
+    await cdp.eval(`document.getElementById('nav-browse').click(); return true;`);
+    await sleep(280);
+    const hiddenAfterCancel = await cdp.eval(`
+      return {
+        visible: !!document.querySelector('.journey-card[data-post-id="POST-003"]'),
+        cards: document.querySelectorAll('.journey-card').length
+      };`);
+    check('a cancelled journey leaves Browse', hiddenAfterCancel.visible === false, hiddenAfterCancel);
+
+    console.log('\n== Manage a Record performs real actions (image 09) ==');
+    await cdp.eval(`
+      document.getElementById('nav-manage').click();
+      document.getElementById('manage-record-id').value = 'DEMO-0006-check';
+      return true;`);
+    await sleep(200);
+
+    /* Emma owns POST-006: the record view must offer its real management actions. */
+    await switchTo('PROF-EMMA');
+    await cdp.eval(`
+      document.getElementById('nav-manage').click();
+      document.getElementById('manage-record-id').value = 'POST-006';
+      document.getElementById('manage-code').value = 'DEMO-0006';
+      document.getElementById('manage-form').requestSubmit();
+      return true;`);
+    await sleep(300);
+    const managePost = await cdp.eval(`
+      var box = document.getElementById('manage-result');
+      var cancel = box.querySelector('[data-action="cancel-post"]');
+      return {
+        shown: box.textContent.length > 0,
+        codeVisible: /DEMO-0006/.test(box.textContent),
+        cancelOffered: !!cancel && cancel.disabled === false,
+        applicationsLine: /Applications/.test(box.textContent)
+      };`);
+    check('the code opens the real journey record', managePost.shown === true && managePost.codeVisible === true, managePost);
+    check('the record view offers a real Cancel Post action', managePost.cancelOffered === true, managePost);
+    check('the record view lists the application summary', managePost.applicationsLine === true, managePost);
+    await cdp.shot('09b_manage_actions.png');
+
+    /* A Pending application reopened by its own code can be withdrawn there. */
+    await switchTo('PROF-EMMA');
+    await cdp.eval(`
+      document.getElementById('manage-dialog').close();
+      document.getElementById('nav-browse').click();
+      document.querySelector('[data-action="view-details"][data-post-id="POST-004"]').click();
+      document.getElementById('details-apply-btn').click();
+      return true;`);
+    await sleep(400);
+    await cdp.eval(`document.getElementById('results-dialog').close(); return true;`);
+    const emmaPending = await snapshot();
+    const emmaAppId = Object.keys(emmaPending.applications).filter(function (id) {
+      return emmaPending.applications[id].applicantProfileId === 'PROF-EMMA';
+    })[0];
+    check('Emma applies to Zoe\'s journey', !!emmaAppId && emmaPending.applications[emmaAppId].status === 'Pending', emmaPending.statusList);
+
+    await cdp.eval(`
+      document.getElementById('nav-manage').click();
+      document.getElementById('manage-record-id').value = '` + emmaAppId + `';
+      document.getElementById('manage-code').value = '` + emmaPending.applications[emmaAppId].managementCode + `';
+      document.getElementById('manage-form').requestSubmit();
+      return true;`);
+    await sleep(320);
+    const manageApplication = await cdp.eval(`
+      var box = document.getElementById('manage-result');
+      var withdraw = box.querySelector('[data-action="withdraw-application"]');
+      return {
+        codeVisible: /` + emmaPending.applications[emmaAppId].managementCode + `/.test(box.textContent),
+        withdrawOffered: !!withdraw && withdraw.disabled === false,
+        status: box.querySelector('.badge').textContent
+      };`);
+    check('the application code opens its own record', manageApplication.codeVisible === true, manageApplication);
+    check('the applicant can withdraw from the record view', manageApplication.withdrawOffered === true, manageApplication);
+    check('the record shows its Pending status', manageApplication.status === 'Pending', manageApplication.status);
+
+    await cdp.eval(`document.querySelector('#manage-result [data-action="withdraw-application"]').click(); return true;`);
+    await sleep(450);
+    const manageAfterWithdraw = await cdp.eval(`
+      var stored = JSON.parse(localStorage.getItem('sj_demo_state_v2'));
+      var app = stored.applications.filter(function (a) { return a.applicationId === '` + emmaAppId + `'; })[0];
+      var box = document.getElementById('manage-result');
+      return {
+        status: app.status,
+        viewStatus: box.querySelector('.badge').textContent,
+        withdrawGone: !box.querySelector('[data-action="withdraw-application"]')
+      };`);
+    check('withdrawing from the record view is a real state change', manageAfterWithdraw.status === 'Withdrawn', manageAfterWithdraw);
+    check('the record view refreshes to the new status', manageAfterWithdraw.viewStatus === 'Withdrawn' && manageAfterWithdraw.withdrawGone === true, manageAfterWithdraw);
+
+    console.log('\n== Cancel Post also cancels a live application (requirement 12) ==');
+    await switchTo('PROF-ALEX');
+    await cdp.eval(`
+      document.getElementById('nav-browse').click();
+      document.querySelector('[data-action="view-details"][data-post-id="POST-006"]').click();
+      document.getElementById('details-apply-btn').click();
+      return true;`);
+    await sleep(420);
+    await cdp.eval(`document.getElementById('results-dialog').close(); return true;`);
+    const alexOnEmma = await snapshot();
+    const alexLiveId = Object.keys(alexOnEmma.applications).filter(function (id) {
+      return alexOnEmma.applications[id].postId === 'POST-006' && alexOnEmma.applications[id].status === 'Pending';
+    })[0];
+    check('Alex applies to Emma\'s journey', !!alexLiveId, alexOnEmma.statusList);
+
+    await switchTo('PROF-EMMA');
+    await openActivity('my-posts');
+    await cdp.eval(`document.querySelector('#my-posts-list [data-action="cancel-post"]').click(); return true;`);
+    await sleep(300);
+    const liveCancelPrompt = await cdp.eval(`return document.getElementById('confirm-message').textContent;`);
+    check('the prompt counts the live applications', /1 live application/.test(liveCancelPrompt), liveCancelPrompt);
+    await cdp.eval(`document.getElementById('confirm-ok-btn').click(); return true;`);
+    await sleep(450);
+    const afterLiveCancel = await snapshot();
+    check('the journey is Cancelled', afterLiveCancel.posts['POST-006'].status === 'Cancelled');
+    check('the live application is cancelled with it', afterLiveCancel.applications[alexLiveId].status === 'Cancelled');
+    check('the traveller is told the publisher cancelled', /publisher cancelled this journey/.test(afterLiveCancel.applications[alexLiveId].reason),
+      afterLiveCancel.applications[alexLiveId].reason);
+
     check('no uncaught page errors or console.error calls', pageErrors.length === 0, pageErrors.slice(0, 5));
 
     console.log('\n== Plain URL, no ?demo=1 (guest flow) ==');

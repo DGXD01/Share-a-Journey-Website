@@ -86,10 +86,15 @@ SJ.rules = (function () {
     })[0] || null;
   }
 
-  function hasUnfinishedAccepted(state, profileId) {
-    return state.applications.some(function (application) {
-      return application.applicantProfileId === profileId && application.status === 'Accepted';
-    });
+  /* An "unfinished" accepted journey is one that is still confirmed and has not
+     departed yet. A ride that already happened no longer blocks new business. */
+  function activeAcceptedFor(state, profileId) {
+    return state.applications.filter(function (application) {
+      if (application.applicantProfileId !== profileId || application.status !== 'Accepted') { return false; }
+      var post = postById(state, application.postId);
+      if (!post || post.status === 'Cancelled') { return false; }
+      return !isPastDeparture(post);
+    })[0] || null;
   }
 
   /* --------------------------------------------------------------- validation */
@@ -202,6 +207,11 @@ SJ.rules = (function () {
     }).map(function (application) {
       return { application: application, post: postById(state, application.postId) };
     }).sort(function (a, b) {
+      /* Newest first; records created in the same minute are ordered by their
+         record ID so the list never looks arbitrary. */
+      if (String(a.application.appliedAt) === String(b.application.appliedAt)) {
+        return a.application.applicationId < b.application.applicationId ? 1 : -1;
+      }
       return String(b.application.appliedAt) < String(a.application.appliedAt) ? -1 : 1;
     });
 
@@ -213,6 +223,9 @@ SJ.rules = (function () {
       });
     });
     received.sort(function (a, b) {
+      if (String(a.application.appliedAt) === String(b.application.appliedAt)) {
+        return a.application.applicationId < b.application.applicationId ? -1 : 1;
+      }
       return String(a.application.appliedAt) < String(b.application.appliedAt) ? -1 : 1;
     });
 
@@ -365,7 +378,7 @@ SJ.rules = (function () {
     var appliedAt = now.date + ' ' + now.time;
     var results = [];
     var successCount = 0;
-    var acceptanceBlocked = hasUnfinishedAccepted(next, profile.profileId);
+    var blockedBy = activeAcceptedFor(next, profile.profileId);
 
     postIds.forEach(function (postId) {
       var post = postById(next, postId);
@@ -390,8 +403,8 @@ SJ.rules = (function () {
         results.push({ postId: post.postId, ok: false, error: 'You already have an active application for this journey.', post: post });
         return;
       }
-      if (acceptanceBlocked) {
-        results.push({ postId: post.postId, ok: false, error: 'You already have an accepted journey, so a second application is not allowed.', post: post });
+      if (blockedBy) {
+        results.push({ postId: post.postId, ok: false, error: 'You already have a confirmed journey (' + blockedBy.applicationId + '), so a second application is not allowed.', post: post });
         return;
       }
 
@@ -425,6 +438,254 @@ SJ.rules = (function () {
     }
 
     return { ok: true, state: next, results: results, successCount: successCount, failedCount: results.length - successCount };
+  }
+
+  /* ==================================================================
+     DAY 2 — approvals, withdrawals and cancellations (images 07 / 08 / 09)
+
+     Every command first asks its own permission predicate, so the button state
+     in the UI and the rule that runs on submit can never disagree.
+     ================================================================== */
+
+  function ownPost(state, post) {
+    var profile = profileById(state, state.activeProfileId);
+    return !!profile && !!post && post.ownerProfileId === profile.profileId;
+  }
+
+  function samePerson(state, profileId) {
+    return !!state.activeProfileId && state.activeProfileId === profileId;
+  }
+
+  function canAccept(state, applicationId) {
+    var application = applicationById(state, applicationId);
+    if (!application) { return { ok: false, error: 'That application is not in the local snapshot.', code: 'missing' }; }
+    var post = postById(state, application.postId);
+    if (!post) { return { ok: false, error: 'The journey behind this application no longer exists.', code: 'no-post' }; }
+    if (!ownPost(state, post)) {
+      return { ok: false, error: 'Only the publisher of this journey can accept an application.', code: 'not-owner' };
+    }
+    if (application.status !== 'Pending') {
+      return { ok: false, error: 'This application is ' + application.status + ' and can no longer be accepted.', code: 'not-pending' };
+    }
+    if (post.status === 'Confirmed') {
+      return { ok: false, error: 'This journey is already confirmed with another traveller.', code: 'confirmed' };
+    }
+    if (post.status !== 'Open') {
+      return { ok: false, error: 'This journey is ' + post.status + ' and cannot be confirmed.', code: 'post-closed' };
+    }
+    if (isPastDeparture(post)) {
+      return { ok: false, error: 'This journey has already departed, so it cannot be accepted any more.', code: 'departed' };
+    }
+    var others = activeAcceptedFor(state, application.applicantProfileId);
+    if (others) {
+      return {
+        ok: false,
+        error: 'This applicant is already confirmed on journey ' + others.applicationId + ' (' + others.postId + ').',
+        code: 'applicant-confirmed'
+      };
+    }
+    return { ok: true, application: application, post: post };
+  }
+
+  function canDecline(state, applicationId) {
+    var application = applicationById(state, applicationId);
+    if (!application) { return { ok: false, error: 'That application is not in the local snapshot.', code: 'missing' }; }
+    var post = postById(state, application.postId);
+    if (!post) { return { ok: false, error: 'The journey behind this application no longer exists.', code: 'no-post' }; }
+    if (!ownPost(state, post)) {
+      return { ok: false, error: 'Only the publisher of this journey can decline an application.', code: 'not-owner' };
+    }
+    if (application.status !== 'Pending') {
+      return { ok: false, error: 'This application is ' + application.status + ' and can no longer be declined.', code: 'not-pending' };
+    }
+    return { ok: true, application: application, post: post };
+  }
+
+  function canWithdraw(state, applicationId) {
+    var application = applicationById(state, applicationId);
+    if (!application) { return { ok: false, error: 'That application is not in the local snapshot.', code: 'missing' }; }
+    if (!samePerson(state, application.applicantProfileId)) {
+      return { ok: false, error: 'Only the applicant can withdraw this application.', code: 'not-applicant' };
+    }
+    if (application.status !== 'Pending') {
+      return { ok: false, error: 'This application is ' + application.status + ' and can no longer be withdrawn.', code: 'not-pending' };
+    }
+    return { ok: true, application: application, post: postById(state, application.postId) };
+  }
+
+  function canCancelJourney(state, applicationId) {
+    var application = applicationById(state, applicationId);
+    if (!application) { return { ok: false, error: 'That application is not in the local snapshot.', code: 'missing' }; }
+    if (!samePerson(state, application.applicantProfileId)) {
+      return { ok: false, error: 'Only the applicant can cancel this confirmed journey.', code: 'not-applicant' };
+    }
+    if (application.status !== 'Accepted') {
+      return { ok: false, error: 'Only a confirmed (Accepted) application can be cancelled here.', code: 'not-accepted' };
+    }
+    var post = postById(state, application.postId);
+    if (post && isPastDeparture(post)) {
+      return { ok: false, error: 'This journey has already departed, so the confirmed place cannot be cancelled.', code: 'departed' };
+    }
+    return { ok: true, application: application, post: post };
+  }
+
+  function canCancelPost(state, postId) {
+    var post = postById(state, postId);
+    if (!post) { return { ok: false, error: 'That journey is not in the local snapshot.', code: 'missing' }; }
+    if (!ownPost(state, post)) {
+      return { ok: false, error: 'Only the publisher can cancel this journey.', code: 'not-owner' };
+    }
+    if (post.status === 'Cancelled') {
+      return { ok: false, error: 'This journey is already cancelled.', code: 'cancelled' };
+    }
+    if (isPastDeparture(post)) {
+      return { ok: false, error: 'This journey has already departed, so it cannot be cancelled.', code: 'departed' };
+    }
+    return { ok: true, post: post };
+  }
+
+  /* Accept must be computed and stored in one pass: this application becomes
+     Accepted, the journey becomes Confirmed and leaves the public list, the
+     other applicants on this journey become Not Selected, and every other
+     Pending application of the same applicant (on ANY journey) becomes
+     Automatically Cancelled with a written reason. */
+  function acceptApplication(currentState, input) {
+    var check = canAccept(currentState, input.applicationId);
+    if (!check.ok) { return check; }
+
+    var application = check.application;
+    var post = check.post;
+    var next = cloneState(currentState);
+    var target = applicationById(next, application.applicationId);
+    var targetPost = postById(next, post.postId);
+
+    target.status = 'Accepted';
+    target.reason = '';
+    targetPost.status = 'Confirmed';
+    targetPost.confirmedApplicationId = target.applicationId;
+
+    var notSelected = [];
+    applicationsOfPost(next, targetPost.postId).forEach(function (other) {
+      if (other.applicationId === target.applicationId || other.status !== 'Pending') { return; }
+      other.status = 'Not Selected';
+      other.reason = 'Another applicant was accepted for this journey.';
+      notSelected.push(other.applicationId);
+    });
+
+    var autoCancelled = [];
+    next.applications.forEach(function (other) {
+      if (other.applicationId === target.applicationId) { return; }
+      if (other.applicantProfileId !== target.applicantProfileId) { return; }
+      if (other.status !== 'Pending') { return; }
+      other.status = 'Automatically Cancelled';
+      other.reason = 'Automatically cancelled: this applicant was accepted for journey ' + targetPost.postId + '.';
+      autoCancelled.push(other.applicationId);
+    });
+
+    return {
+      ok: true,
+      state: next,
+      post: targetPost,
+      application: target,
+      notSelected: notSelected,
+      autoCancelled: autoCancelled,
+      message: 'Accepted ' + target.applicantName + ' for ' + post.origin + ' \u2192 ' + post.destination + '.'
+    };
+  }
+
+  function declineApplication(currentState, input) {
+    var check = canDecline(currentState, input.applicationId);
+    if (!check.ok) { return check; }
+
+    var next = cloneState(currentState);
+    var target = applicationById(next, check.application.applicationId);
+    target.status = 'Declined';
+    target.reason = 'Declined by the publisher.';
+
+    return {
+      ok: true,
+      state: next,
+      application: target,
+      post: postById(next, target.postId),
+      message: 'Declined the application from ' + target.applicantName + '. The journey stays open for other applicants.'
+    };
+  }
+
+  function withdrawApplication(currentState, input) {
+    var check = canWithdraw(currentState, input.applicationId);
+    if (!check.ok) { return check; }
+
+    var next = cloneState(currentState);
+    var target = applicationById(next, check.application.applicationId);
+    target.status = 'Withdrawn';
+    target.reason = 'Withdrawn by the applicant.';
+
+    return {
+      ok: true,
+      state: next,
+      application: target,
+      post: postById(next, target.postId),
+      message: 'Application ' + target.applicationId + ' was withdrawn. Nothing else changed.'
+    };
+  }
+
+  function cancelPost(currentState, input) {
+    var check = canCancelPost(currentState, input.postId);
+    if (!check.ok) { return check; }
+
+    var next = cloneState(currentState);
+    var post = postById(next, check.post.postId);
+    post.status = 'Cancelled';
+    post.confirmedApplicationId = null;
+
+    var cancelled = [];
+    applicationsOfPost(next, post.postId).forEach(function (application) {
+      if (application.status !== 'Pending' && application.status !== 'Accepted') { return; }
+      application.status = 'Cancelled';
+      application.reason = 'The publisher cancelled this journey.';
+      cancelled.push(application.applicationId);
+    });
+
+    return {
+      ok: true,
+      state: next,
+      post: post,
+      cancelled: cancelled,
+      message: 'Journey ' + post.postId + ' was cancelled'
+        + (cancelled.length > 0 ? ' and ' + cancelled.length + ' related application(s) were cancelled with it.' : '.')
+    };
+  }
+
+  /* The applicant gives up a confirmed place. If the journey has not departed
+     and the publisher did not cancel it, the journey goes back to Open — but old
+     terminal applications (Not Selected / Automatically Cancelled) never revive. */
+  function cancelJourney(currentState, input) {
+    var check = canCancelJourney(currentState, input.applicationId);
+    if (!check.ok) { return check; }
+
+    var next = cloneState(currentState);
+    var application = applicationById(next, check.application.applicationId);
+    application.status = 'Cancelled';
+    application.reason = 'Cancelled by the applicant.';
+
+    var reopened = false;
+    var post = postById(next, application.postId);
+    if (post && post.status !== 'Cancelled' && !isPastDeparture(post)) {
+      post.status = 'Open';
+      post.confirmedApplicationId = null;
+      reopened = true;
+    }
+
+    return {
+      ok: true,
+      state: next,
+      application: application,
+      post: post,
+      reopened: reopened,
+      message: 'Confirmed journey cancelled. ' + (reopened
+        ? 'Journey ' + (post ? post.postId : '') + ' is public again and can receive new applications.'
+        : 'The journey was not reopened.')
+    };
   }
 
   function expireRecords(currentState) {
@@ -479,6 +740,7 @@ SJ.rules = (function () {
     applicationById: applicationById,
     applicationsOfPost: applicationsOfPost,
     liveApplicationFor: liveApplicationFor,
+    activeAcceptedFor: activeAcceptedFor,
     selectionState: selectionState,
     isPastDeparture: isPastDeparture,
     isPubliclyVisible: isPubliclyVisible,
@@ -495,6 +757,18 @@ SJ.rules = (function () {
     switchPerson: switchPerson,
     createPost: createPost,
     applyToPosts: applyToPosts,
-    expireRecords: expireRecords
+    expireRecords: expireRecords,
+
+    /* DAY 2 commands and their permission predicates */
+    canAccept: canAccept,
+    canDecline: canDecline,
+    canWithdraw: canWithdraw,
+    canCancelPost: canCancelPost,
+    canCancelJourney: canCancelJourney,
+    acceptApplication: acceptApplication,
+    declineApplication: declineApplication,
+    withdrawApplication: withdrawApplication,
+    cancelPost: cancelPost,
+    cancelJourney: cancelJourney
   };
 }());

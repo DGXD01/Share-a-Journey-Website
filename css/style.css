@@ -234,8 +234,12 @@ code {
 .btn-secondary:hover:not([disabled]) { background: var(--info-bg); }
 .btn-ghost { background: transparent; color: var(--muted); border-color: transparent; padding: 7px 10px; }
 .btn-ghost:hover:not([disabled]) { background: rgba(255, 255, 255, .75); color: var(--ink); }
-.btn-danger { background: var(--danger); color: #fff; }
-.btn-danger:hover { background: #98332a; }
+/* Destructive actions are outlined so they never read like an ordinary
+   confirmation; the final "yes" inside the confirm dialog is the solid one. */
+.btn-danger { background: var(--surface); color: var(--danger); border-color: #e8c4bc; }
+.btn-danger:hover:not([disabled]) { background: var(--danger-bg); border-color: var(--danger); }
+.btn-danger-solid { background: var(--danger); color: #fff; }
+.btn-danger-solid:hover:not([disabled]) { background: #98332a; }
 .btn-small { padding: 6px 11px; font-size: .85rem; }
 
 /* ============================== Layout ============================== */

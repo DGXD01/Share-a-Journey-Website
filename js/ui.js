@@ -307,8 +307,8 @@ SJ.ui = (function () {
     $('tab-count-applications').textContent = activity.counts.applications;
     $('tab-count-received').textContent = activity.counts.received;
 
-    renderMyPosts(activity);
-    renderMyApplications(activity);
+    renderMyPosts(activity, state);
+    renderMyApplications(activity, state);
     renderReceived(activity);
 
     Array.prototype.forEach.call(document.querySelectorAll('#activity-tabs .tab'), function (tab) {
@@ -320,9 +320,8 @@ SJ.ui = (function () {
       $(name + '-panel').hidden = name !== uiState.activityTab;
     });
 
-    $('activity-scope-note').textContent = 'Local demo note: this list is read from this browser\'s storage only. '
-      + 'Approvals, withdrawals and cancellations (reference images 06–08) are implemented in the Day 2 build; '
-      + 'the rows below already show the real stored status of every record.';
+    $('activity-scope-note').textContent = 'Local demo note: every row below is read from this browser\'s storage. '
+      + 'Approvals, declines, withdrawals and cancellations are real state changes and are saved in the same snapshot the moment you use them.';
   }
 
   function cell(label, valueNode, extraClass) {
@@ -350,7 +349,21 @@ SJ.ui = (function () {
     container.appendChild(box);
   }
 
-  function renderMyPosts(activity) {
+  function actionButton(label, action, dataset, variant, check) {
+    var btn = el('button', 'btn ' + (variant || 'btn-secondary') + ' btn-small', label);
+    btn.type = 'button';
+    btn.setAttribute('data-action', action);
+    Object.keys(dataset || {}).forEach(function (key) {
+      btn.setAttribute('data-' + key, dataset[key]);
+    });
+    if (check && check.ok === false) {
+      btn.disabled = true;
+      btn.title = check.error;
+    }
+    return btn;
+  }
+
+  function renderMyPosts(activity, state) {
     var list = $('my-posts-list');
     clear(list);
 
@@ -367,6 +380,7 @@ SJ.ui = (function () {
       var row = el('div', 'record-row posts');
       var applications = activity.received.filter(function (entry) { return entry.post.postId === post.postId; });
       var pending = applications.filter(function (entry) { return entry.application.status === 'Pending'; }).length;
+      var accepted = applications.filter(function (entry) { return entry.application.status === 'Accepted'; })[0];
 
       row.appendChild(cell('Journey', valueNode(routeText(post), post.notes || 'No notes added yet.')));
       row.appendChild(cell('Departure', valueNode(formatDate(post.date), post.time + ' · ' + departurePhrase(post)), 'optional-cell'));
@@ -375,31 +389,26 @@ SJ.ui = (function () {
       row.appendChild(cell('Record ID', idNode, 'optional-cell'));
 
       var statusWrap = el('span', 'cell-value');
-      append(statusWrap,
-        el('span', statusClass(post.status), post.status),
-        el('span', 'record-secondary', applications.length === 0
-          ? 'Management code ' + post.managementCode
-          : pending + ' pending · ' + applications.length + ' total application' + (applications.length === 1 ? '' : 's'))
-      );
+      append(statusWrap, el('span', statusClass(post.status), post.status));
+      var statusDetail = applications.length === 0
+        ? 'Management code ' + post.managementCode
+        : pending + ' pending · ' + applications.length + ' total application' + (applications.length === 1 ? '' : 's');
+      if (accepted) { statusDetail = 'Confirmed with ' + accepted.application.applicantName; }
+      append(statusWrap, el('span', 'record-secondary', statusDetail));
       row.appendChild(cell('Status', statusWrap));
 
       var actions = el('div', 'record-cell record-actions');
-      var detailsBtn = el('button', 'btn btn-secondary btn-small', 'View Details');
-      detailsBtn.type = 'button';
-      detailsBtn.setAttribute('data-action', 'view-details');
-      detailsBtn.setAttribute('data-post-id', post.postId);
-      var manageBtn = el('button', 'btn btn-secondary btn-small', 'Manage');
-      manageBtn.type = 'button';
-      manageBtn.setAttribute('data-action', 'open-received');
-      manageBtn.setAttribute('data-post-id', post.postId);
-      append(actions, detailsBtn, manageBtn);
+      actions.appendChild(actionButton('View Details', 'view-details', { 'post-id': post.postId }, 'btn-secondary'));
+      actions.appendChild(actionButton('Manage', 'open-received', { 'post-id': post.postId }, 'btn-secondary'));
+      actions.appendChild(actionButton('Cancel Post', 'cancel-post', { 'post-id': post.postId }, 'btn-danger',
+        SJ.rules.canCancelPost(state, post.postId)));
       row.appendChild(actions);
 
       list.appendChild(row);
     });
   }
 
-  function renderMyApplications(activity) {
+  function renderMyApplications(activity, state) {
     var banner = $('my-applications-banner');
     var list = $('my-applications-list');
     clear(banner);
@@ -415,20 +424,51 @@ SJ.ui = (function () {
     }
 
     var pending = activity.applications.filter(function (entry) { return entry.application.status === 'Pending'; }).length;
-    var accepted = activity.applications.filter(function (entry) { return entry.application.status === 'Accepted'; }).length;
-    var closed = activity.applications.length - pending - accepted;
+    var acceptedEntries = activity.applications.filter(function (entry) { return entry.application.status === 'Accepted'; });
+    var autoCancelled = activity.applications.filter(function (entry) { return entry.application.status === 'Automatically Cancelled'; }).length;
+    var closed = activity.applications.length - pending - acceptedEntries.length;
 
-    var bannerBox = el('div', 'status-banner ' + (accepted > 0 ? 'accepted' : (pending > 0 ? 'pending' : 'neutral')));
-    var bannerText = el('div', null);
-    append(bannerText,
-      el('p', 'banner-title', accepted > 0
-        ? 'You have ' + accepted + ' accepted application' + (accepted === 1 ? '' : 's') + '.'
-        : (pending > 0 ? pending + ' application' + (pending === 1 ? '' : 's') + ' still waiting for the publisher.'
-          : 'No application is still waiting for an answer.')),
-      el('p', 'banner-text', pending + ' Pending · ' + accepted + ' Accepted · ' + closed + ' closed or cancelled')
-    );
-    banner.appendChild(bannerBox);
-    bannerBox.appendChild(bannerText);
+    if (acceptedEntries.length > 0) {
+      acceptedEntries.forEach(function (entry) {
+        var post = entry.post;
+        var bannerBox = el('div', 'status-banner accepted');
+        var bannerText = el('div', null);
+        append(bannerText,
+          el('p', 'banner-title', 'Accepted — you are confirmed for ' + (post ? routeText(post) : 'a journey') + '.'),
+          el('p', 'banner-text', post
+            ? 'Departure ' + formatDate(post.date) + ' at ' + post.time + ' · published by ' + post.name
+              + (autoCancelled > 0 ? ' · ' + autoCancelled + ' of your other application(s) were automatically cancelled because this journey was confirmed.' : '')
+            : 'The journey record is no longer in the snapshot.')
+        );
+        var bannerActions = el('div', 'banner-actions');
+        if (post) {
+          bannerActions.appendChild(actionButton('View Confirmed Journey', 'view-details', { 'post-id': post.postId }, 'btn-secondary'));
+        }
+        bannerActions.appendChild(actionButton('Cancel Confirmed Journey', 'cancel-journey',
+          { 'application-id': entry.application.applicationId }, 'btn-danger',
+          SJ.rules.canCancelJourney(state, entry.application.applicationId)));
+        append(bannerBox, bannerText, bannerActions);
+        banner.appendChild(bannerBox);
+      });
+    } else if (pending > 0) {
+      var waitBox = el('div', 'status-banner pending');
+      var waitText = el('div', null);
+      append(waitText,
+        el('p', 'banner-title', pending + ' application' + (pending === 1 ? '' : 's') + ' still waiting for the publisher.'),
+        el('p', 'banner-text', pending + ' Pending · 0 Accepted · ' + closed + ' closed or cancelled')
+      );
+      append(waitBox, waitText);
+      banner.appendChild(waitBox);
+    } else {
+      var calmBox = el('div', 'status-banner neutral');
+      var calmText = el('div', null);
+      append(calmText,
+        el('p', 'banner-title', 'No application is still waiting for an answer.'),
+        el('p', 'banner-text', '0 Pending · 0 Accepted · ' + closed + ' closed or cancelled')
+      );
+      append(calmBox, calmText);
+      banner.appendChild(calmBox);
+    }
 
     activity.applications.forEach(function (entry) {
       var application = entry.application;
@@ -453,11 +493,12 @@ SJ.ui = (function () {
 
       var actions = el('div', 'record-cell record-actions');
       if (post) {
-        var viewBtn = el('button', 'btn btn-secondary btn-small', 'View Journey');
-        viewBtn.type = 'button';
-        viewBtn.setAttribute('data-action', 'view-details');
-        viewBtn.setAttribute('data-post-id', post.postId);
-        actions.appendChild(viewBtn);
+        actions.appendChild(actionButton('View Journey', 'view-details', { 'post-id': post.postId }, 'btn-secondary'));
+      }
+      if (application.status === 'Pending') {
+        actions.appendChild(actionButton('Withdraw', 'withdraw-application',
+          { 'application-id': application.applicationId }, 'btn-secondary',
+          SJ.rules.canWithdraw(state, application.applicationId)));
       }
       row.appendChild(actions);
 
@@ -776,6 +817,13 @@ SJ.ui = (function () {
       'You need your record ID and management code to reopen this application later.'
     ].forEach(function (line) { list.appendChild(el('li', null, line)); });
     info.appendChild(list);
+    if (selection.reason === 'own') {
+      var ownActions = el('div', 'banner-actions');
+      ownActions.appendChild(actionButton('Open Received Applications', 'open-received', { 'post-id': post.postId }, 'btn-secondary'));
+      ownActions.appendChild(actionButton('Cancel Post', 'cancel-post', { 'post-id': post.postId }, 'btn-danger',
+        SJ.rules.canCancelPost(state, post.postId)));
+      info.appendChild(ownActions);
+    }
     body.appendChild(info);
 
     var applyBtn = $('details-apply-btn');
@@ -909,6 +957,8 @@ SJ.ui = (function () {
       return;
     }
 
+    var applications = SJ.rules.applicationsOfPost(state, post.postId);
+
     var summary = el('div', 'record-summary');
     var head = el('div', 'record-summary-head');
     var headText = el('div');
@@ -916,7 +966,11 @@ SJ.ui = (function () {
       el('p', 'result-route', routeText(post)),
       el('p', 'record-secondary', formatDate(post.date) + ' at ' + post.time + ' · ' + post.postId)
     );
-    append(head, headText, el('span', statusClass(post.status), post.status));
+    var headActions = el('div', 'banner-actions');
+    headActions.appendChild(el('span', statusClass(post.status), post.status));
+    headActions.appendChild(actionButton('Cancel Post', 'cancel-post', { 'post-id': post.postId }, 'btn-danger',
+      SJ.rules.canCancelPost(state, post.postId)));
+    append(head, headText, headActions);
     summary.appendChild(head);
 
     var summaryBody = el('div', 'record-summary-body');
@@ -931,7 +985,6 @@ SJ.ui = (function () {
     summary.appendChild(summaryBody);
     body.appendChild(summary);
 
-    var applications = SJ.rules.applicationsOfPost(state, post.postId);
     if (applications.length === 0) {
       body.appendChild(el('p', 'list-empty', 'No one has applied to this journey yet.'));
     } else {
@@ -949,25 +1002,29 @@ SJ.ui = (function () {
 
         var actions = el('div', 'applicant-actions');
         actions.appendChild(el('span', statusClass(application.status), application.status));
-        ['Accept', 'Decline'].forEach(function (label) {
-          var btn = el('button', 'btn ' + (label === 'Accept' ? 'btn-primary' : 'btn-secondary') + ' btn-small', label);
-          btn.type = 'button';
-          btn.disabled = true;
-          btn.title = 'Accept and Decline are implemented in the Day 2 build.';
-          actions.appendChild(btn);
-        });
+
+        if (application.status === 'Pending') {
+          actions.appendChild(actionButton('Accept', 'accept-application',
+            { 'application-id': application.applicationId }, 'btn-primary',
+            SJ.rules.canAccept(state, application.applicationId)));
+          actions.appendChild(actionButton('Decline', 'decline-application',
+            { 'application-id': application.applicationId }, 'btn-secondary',
+            SJ.rules.canDecline(state, application.applicationId)));
+        }
         row.appendChild(actions);
         body.appendChild(row);
       });
     }
 
-    $('received-note').textContent = 'Day 1 build: applicant details are real stored records, read-only. '
-      + 'Accept / Decline (reference image 08) and the automatic cancellation of other applications (image 07) arrive with the Day 2 state machine.';
+    var note = $('received-note');
+    note.textContent = post.status === 'Confirmed'
+      ? 'This journey is confirmed. Other applicants were marked Not Selected, and the accepted traveller\'s other pending applications were cancelled automatically.'
+      : 'Accepting one applicant confirms this journey, hides it from Browse, marks the other applicants Not Selected and automatically cancels the accepted traveller\'s other pending applications — in one save.';
   }
 
   /* ------------------------------------------------------------ manage dialog */
 
-  function renderManageResult(result) {
+  function renderManageResult(state, result) {
     var box = $('manage-result');
     clear(box);
 
@@ -983,19 +1040,30 @@ SJ.ui = (function () {
     var summary = el('div', 'record-summary');
     var head = el('div', 'record-summary-head');
     var headText = el('div');
+    var headActions = el('div', 'banner-actions');
+    var body = el('div', 'record-summary-body');
+    var grid = el('div', 'detail-grid');
 
     if (result.kind === 'post') {
       append(headText,
         el('p', 'result-route', routeText(record)),
         el('p', 'record-secondary', 'Journey record · ' + record.postId + ' · ' + formatDate(record.date) + ' at ' + record.time)
       );
-      append(head, headText, el('span', statusClass(record.status), record.status));
-      summary.appendChild(head);
-      var body = el('div', 'record-summary-body');
-      var grid = el('div', 'detail-grid');
+      append(headActions, el('span', statusClass(record.status), record.status));
+      var received = SJ.rules.applicationsOfPost(state, record.postId);
+      if (received.length > 0) {
+        headActions.appendChild(actionButton('Received Applications', 'open-received',
+          { 'post-id': record.postId }, 'btn-secondary'));
+      }
+      headActions.appendChild(actionButton('Cancel Post', 'cancel-post', { 'post-id': record.postId }, 'btn-danger',
+        SJ.rules.canCancelPost(state, record.postId)));
+
       [['Publisher', record.name + ' (' + postTypeLabel(record.postType).toLowerCase() + ')'],
         ['Contact', record.phone + ' · ' + record.email],
         ['Management code', record.managementCode],
+        ['Applications', received.length === 0 ? 'none yet' : received.length + ' (' + received.map(function (application) {
+          return application.applicationId + ' ' + application.status;
+        }).join(', ') + ')'],
         ['Notes', record.notes || 'none']
       ].forEach(function (pair) {
         var block = el('div', 'detail-block');
@@ -1003,17 +1071,25 @@ SJ.ui = (function () {
         grid.appendChild(block);
       });
       body.appendChild(grid);
-      body.appendChild(el('p', 'field-hint', 'Code verified in this browser. Cancel Post / Cancel Confirmed Journey arrive with the Day 2 build.'));
-      summary.appendChild(body);
+      body.appendChild(el('p', 'field-hint', 'Management code verified in this browser. '
+        + 'Cancelling a post hides it from Browse and cancels its live applications; finished records keep their history.'));
     } else {
       append(headText,
         el('p', 'result-route', 'Application ' + record.applicationId),
         el('p', 'record-secondary', 'Applied ' + record.appliedAt + ' to ' + record.postId)
       );
-      append(head, headText, el('span', statusClass(record.status), record.status));
-      summary.appendChild(head);
-      var appBody = el('div', 'record-summary-body');
-      var appGrid = el('div', 'detail-grid');
+      append(headActions, el('span', statusClass(record.status), record.status));
+      if (SJ.rules.postById(state, record.postId)) {
+        headActions.appendChild(actionButton('View Journey', 'view-details', { 'post-id': record.postId }, 'btn-secondary'));
+      }
+      if (record.status === 'Pending') {
+        headActions.appendChild(actionButton('Withdraw', 'withdraw-application',
+          { 'application-id': record.applicationId }, 'btn-secondary', SJ.rules.canWithdraw(state, record.applicationId)));
+      } else if (record.status === 'Accepted') {
+        headActions.appendChild(actionButton('Cancel Confirmed Journey', 'cancel-journey',
+          { 'application-id': record.applicationId }, 'btn-danger', SJ.rules.canCancelJourney(state, record.applicationId)));
+      }
+
       [['Applicant', record.applicantName],
         ['Contact', record.applicantPhone + ' · ' + record.applicantEmail],
         ['Management code', record.managementCode],
@@ -1021,13 +1097,15 @@ SJ.ui = (function () {
       ].forEach(function (pair) {
         var block = el('div', 'detail-block');
         append(block, el('span', 'detail-label', pair[0]), el('span', 'detail-value', pair[1]));
-        appGrid.appendChild(block);
+        grid.appendChild(block);
       });
-      appBody.appendChild(appGrid);
-      appBody.appendChild(el('p', 'field-hint', 'Code verified in this browser. Withdraw / cancel actions arrive with the Day 2 build.'));
-      summary.appendChild(appBody);
+      body.appendChild(grid);
+      body.appendChild(el('p', 'field-hint', 'Management code verified in this browser. Withdrawing only changes this record; '
+        + 'cancelling a confirmed journey reopens the publisher\'s journey while it has not departed.'));
     }
 
+    append(head, headText, headActions);
+    append(summary, head, body);
     box.appendChild(summary);
   }
 
@@ -1077,7 +1155,7 @@ SJ.ui = (function () {
       $('confirm-note').textContent = options.note || '';
       $('confirm-ok-btn').textContent = options.confirmLabel || 'Confirm';
       $('confirm-cancel-btn').textContent = options.cancelLabel || 'Cancel';
-      $('confirm-ok-btn').className = 'btn ' + (options.danger === false ? 'btn-primary' : 'btn-danger');
+      $('confirm-ok-btn').className = 'btn ' + (options.danger === false ? 'btn-primary' : 'btn-danger-solid');
 
       var settled = false;
       function finish(value) {

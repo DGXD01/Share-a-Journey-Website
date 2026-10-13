@@ -220,6 +220,166 @@ console.log('\n== Init / persistence round trip ==');
   state = next(state, guestProfile);
   check('guest becomes the active person', state.activeProfileId === 'PROF-LOCAL-001');
 
+  /* ======================================================================
+     DAY 2 — approvals, withdrawals, cancellations (reference images 07-09)
+     ====================================================================== */
+
+  function asPerson(profileId) {
+    const result = SJ.rules.switchPerson(state, profileId);
+    if (!result.ok) { throw new Error('switch failed: ' + result.error); }
+    state = next(state, result);
+    return state;
+  }
+
+  function applyAs(profileId, postIds) {
+    asPerson(profileId);
+    const result = SJ.rules.applyToPosts(state, { postIds: postIds });
+    if (result.ok) { state = next(state, result); }
+    return result;
+  }
+
+  function statusOf(applicationId) {
+    return SJ.rules.applicationById(state, applicationId).status;
+  }
+
+  function reasonOf(applicationId) {
+    return SJ.rules.applicationById(state, applicationId).reason;
+  }
+
+  console.log('\n== Accept: only the publisher may act ==');
+  asPerson('PROF-ALEX');
+  const wrongOwner = SJ.rules.acceptApplication(state, { applicationId: 'APP-041' });
+  check('a stranger cannot accept', wrongOwner.ok === false && /Only the publisher/.test(wrongOwner.error), wrongOwner.error);
+
+  console.log('\n== Second applicant on the same journey (for Not Selected) ==');
+  const zoeApply = applyAs('PROF-ZOE', ['POST-001']);
+  check('another person can apply to the same journey', zoeApply.ok === true && zoeApply.results[0].application.applicationId === 'APP-044');
+  check('the journey is still Open with two applicants', SJ.rules.postById(state, 'POST-001').status === 'Open');
+
+  console.log('\n== Accept cascade (image 08 -> image 07) ==');
+  asPerson('PROF-ADAM');
+  const accept = SJ.rules.acceptApplication(state, { applicationId: 'APP-041' });
+  check('the publisher can accept a Pending application', accept.ok === true, accept.error);
+  check('one other applicant becomes Not Selected', accept.notSelected.length === 1 && accept.notSelected[0] === 'APP-044', accept.notSelected);
+  check('the applicant\'s other Pending applications are auto-cancelled', accept.autoCancelled.length === 2, accept.autoCancelled);
+  state = next(state, accept);
+
+  const acceptedPost = SJ.rules.postById(state, 'POST-001');
+  check('the journey becomes Confirmed', acceptedPost.status === 'Confirmed');
+  check('the confirmed application is recorded on the journey', acceptedPost.confirmedApplicationId === 'APP-041');
+  check('the accepted application is Accepted', statusOf('APP-041') === 'Accepted');
+  check('the journey leaves the public Browse list', SJ.rules.filterPosts(state, {}).every((p) => p.postId !== 'POST-001'));
+  check('the other applicant is Not Selected', statusOf('APP-044') === 'Not Selected');
+  check('Not Selected carries a written reason', /Another applicant was accepted/.test(reasonOf('APP-044')), reasonOf('APP-044'));
+  check('APP-042 (other journey) is Automatically Cancelled', statusOf('APP-042') === 'Automatically Cancelled');
+  check('APP-043 (other journey) is Automatically Cancelled', statusOf('APP-043') === 'Automatically Cancelled');
+  check('the auto-cancellation names the journey it was accepted for', /POST-001/.test(reasonOf('APP-042')), reasonOf('APP-042'));
+  check('Mia\'s and Tom\'s journeys are untouched and still Open',
+    SJ.rules.postById(state, 'POST-002').status === 'Open' && SJ.rules.postById(state, 'POST-003').status === 'Open');
+  check('a Not Selected application can no longer be accepted',
+    SJ.rules.canAccept(state, 'APP-044').ok === false && /Not Selected/.test(SJ.rules.canAccept(state, 'APP-044').error));
+  check('the confirmed journey cannot accept again', SJ.rules.canAccept(state, 'APP-041').ok === false);
+
+  console.log('\n== Requirement 10: two publishers, only one succeeds (sequential) ==');
+  asPerson('PROF-MIA');
+  const secondAccept = SJ.rules.acceptApplication(state, { applicationId: 'APP-042' });
+  check('the second publisher cannot accept the same applicant', secondAccept.ok === false);
+  check('the refusal explains the real status', /Automatically Cancelled/.test(secondAccept.error), secondAccept.error);
+  const conflictState = JSON.parse(JSON.stringify(state));
+  conflictState.applications.find((a) => a.applicationId === 'APP-043').status = 'Pending';
+  conflictState.activeProfileId = 'PROF-TOM'; /* owner of POST-003 */
+  const directConflict = SJ.rules.canAccept(conflictState, 'APP-043');
+  check('even a still-Pending application is refused while the person is confirmed',
+    directConflict.ok === false && /already confirmed on journey APP-041/.test(directConflict.error), directConflict.error);
+
+  console.log('\n== Decline only touches its own record (requirement 11) ==');
+  const liamApply = applyAs('PROF-LIAM', ['POST-002']);
+  check('Liam can apply to Mia\'s journey', liamApply.ok === true, liamApply.error);
+  const liamAppId = liamApply.results[0].application.applicationId;
+  const strangerDecline = (() => {
+    const before = state.activeProfileId;
+    asPerson('PROF-ALEX');
+    const refused = SJ.rules.declineApplication(state, { applicationId: liamAppId });
+    asPerson(before);
+    return refused;
+  })();
+  check('a non-publisher cannot decline', strangerDecline.ok === false && /Only the publisher/.test(strangerDecline.error));
+  asPerson('PROF-MIA');
+  const decline = SJ.rules.declineApplication(state, { applicationId: liamAppId });
+  check('the publisher can decline', decline.ok === true, decline.error);
+  state = next(state, decline);
+  check('the declined application is Declined with a reason', statusOf(liamAppId) === 'Declined' && /Declined by the publisher/.test(reasonOf(liamAppId)));
+  check('the journey stays Open after a decline', SJ.rules.postById(state, 'POST-002').status === 'Open');
+  check('Alex\'s accepted record is untouched by the decline', statusOf('APP-041') === 'Accepted');
+  check('a declined application cannot be declined twice', SJ.rules.declineApplication(state, { applicationId: liamAppId }).ok === false);
+
+  console.log('\n== Withdraw only touches its own record (requirement 11) ==');
+  const emmaApply = applyAs('PROF-EMMA', ['POST-004']);
+  check('Emma applies to Zoe\'s passenger journey', emmaApply.ok === true, emmaApply.error);
+  const emmaAppId = emmaApply.results[0].application.applicationId;
+  asPerson('PROF-TOM');
+  check('someone else cannot withdraw it', SJ.rules.withdrawApplication(state, { applicationId: emmaAppId }).ok === false);
+  asPerson('PROF-EMMA');
+  const withdraw = SJ.rules.withdrawApplication(state, { applicationId: emmaAppId });
+  check('the applicant can withdraw', withdraw.ok === true, withdraw.error);
+  state = next(state, withdraw);
+  check('the record is Withdrawn', statusOf(emmaAppId) === 'Withdrawn');
+  check('Zoe\'s journey stays Open with no applicant', SJ.rules.postById(state, 'POST-004').status === 'Open');
+
+  console.log('\n== Cancel Confirmed Journey reopens the journey (requirement 13) ==');
+  const liamSecond = applyAs('PROF-LIAM', ['POST-006']);
+  check('Liam applies to Emma\'s journey', liamSecond.ok === true, liamSecond.error);
+  const liamSecondId = liamSecond.results[0].application.applicationId;
+  asPerson('PROF-EMMA');
+  const acceptEmma = SJ.rules.acceptApplication(state, { applicationId: liamSecondId });
+  check('Emma accepts Liam', acceptEmma.ok === true, acceptEmma.error);
+  state = next(state, acceptEmma);
+  check('Emma\'s journey is Confirmed and hidden', SJ.rules.postById(state, 'POST-006').status === 'Confirmed'
+    && SJ.rules.filterPosts(state, {}).every((p) => p.postId !== 'POST-006'));
+  asPerson('PROF-LIAM');
+  const cancelJourney = SJ.rules.cancelJourney(state, { applicationId: liamSecondId });
+  check('the applicant can cancel the confirmed journey', cancelJourney.ok === true, cancelJourney.error);
+  check('the journey is reopened for new applications', cancelJourney.reopened === true);
+  state = next(state, cancelJourney);
+  check('POST-006 is Open again and public', SJ.rules.postById(state, 'POST-006').status === 'Open'
+    && SJ.rules.filterPosts(state, {}).some((p) => p.postId === 'POST-006'));
+  check('the cancelled application keeps its history as Cancelled', statusOf(liamSecondId) === 'Cancelled');
+  check('old terminal records do not revive',
+    statusOf(liamAppId) === 'Declined' && statusOf(emmaAppId) === 'Withdrawn' && statusOf('APP-042') === 'Automatically Cancelled');
+  check('Liam may apply again after giving up the place', applyAs('PROF-LIAM', ['POST-006']).ok === true);
+
+  console.log('\n== Cancel Post cancels the journey and its live applications (requirement 12) ==');
+  asPerson('PROF-TOM');
+  check('a non-publisher cannot cancel the post', SJ.rules.cancelPost(state, { postId: 'POST-001' }).ok === false);
+  asPerson('PROF-ADAM');
+  const cancelPost = SJ.rules.cancelPost(state, { postId: 'POST-001' });
+  check('the publisher can cancel the journey', cancelPost.ok === true, cancelPost.error);
+  check('the confirmed application is cancelled with it', cancelPost.cancelled.indexOf('APP-041') !== -1, cancelPost.cancelled);
+  state = next(state, cancelPost);
+  check('POST-001 is Cancelled and hidden', SJ.rules.postById(state, 'POST-001').status === 'Cancelled'
+    && SJ.rules.filterPosts(state, {}).every((p) => p.postId !== 'POST-001'));
+  check('the traveller is told why', /publisher cancelled this journey/.test(reasonOf('APP-041')), reasonOf('APP-041'));
+  check('Not Selected stays Not Selected (no revival)', statusOf('APP-044') === 'Not Selected');
+  check('a cancelled journey cannot be cancelled again', SJ.rules.cancelPost(state, { postId: 'POST-001' }).ok === false);
+  check('a cancelled journey cannot be applied to', SJ.rules.applyToPosts(state, { postIds: ['POST-001'] }).results[0].ok === false);
+
+  console.log('\n== Departure time blocks every late action (requirement 14) ==');
+  const lateState = JSON.parse(JSON.stringify(state));
+  lateState.posts.find((p) => p.postId === 'POST-006').date = SJ.store.addDaysISO(SJ.store.todayNZ(), -1);
+  const pendingOnLate = lateState.applications.find((a) => a.postId === 'POST-006' && a.status === 'Pending');
+  lateState.activeProfileId = 'PROF-EMMA';
+  check('a departed journey cannot be accepted',
+    !pendingOnLate || (SJ.rules.canAccept(lateState, pendingOnLate.applicationId).ok === false
+      && /already departed/.test(SJ.rules.canAccept(lateState, pendingOnLate.applicationId).error)));
+  check('a departed journey cannot be cancelled by its publisher',
+    SJ.rules.canCancelPost(lateState, 'POST-006').ok === false && /already departed/.test(SJ.rules.canCancelPost(lateState, 'POST-006').error));
+  const lateExpiry = SJ.rules.expireRecords(lateState);
+  check('the pending application on a departed journey expires too', lateExpiry.applicationsExpired >= 1, lateExpiry);
+  const acceptedOnLate = lateExpiry.state.applications.find((a) => a.postId === 'POST-006' && a.status === 'Accepted');
+  lateState.activeProfileId = 'PROF-LIAM';
+  check('an accepted place on a departed journey cannot be cancelled',
+    !acceptedOnLate || SJ.rules.canCancelJourney(lateExpiry.state, acceptedOnLate.applicationId).ok === false);
+
   console.log('\n== Reset (image "Reset Demo Data") ==');
   const reset = await SJ.store.resetDemoData();
   check('reset rebuilds six posts', reset.ok === true && reset.state.posts.length === 6);
