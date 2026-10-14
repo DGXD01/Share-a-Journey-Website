@@ -1,31 +1,29 @@
-# DAY 2 施工记录与 DAY 3 接续点
+# DAY 2 开发记录与 DAY 3 接续点
 
 > 对应施工文档 §5「DAY 2：实现 05 / 06 / 07 / 08 / 09 的业务闭环（约 12 小时）」与 §8.1 的 Gate D2。
 
-## 1. 时间块对照
+## 1. 当日完成内容
 
-| 计划时间块 | 计划内容 | 实际完成 |
-|---|---|---|
-| 0–2h | 单条 Apply、首次资料 `pendingIntent`、管理码生成、提交结果弹窗 | DAY 1 已完成，DAY 2 未改动（回归测试仍全绿） |
-| 2–4h | 多选同类型限制、批量部分失败、逐条凭据与 Copy | DAY 1 已完成（与单条共用 `applyToPosts`） |
-| 4–6h | My Activity：主视图、三 Tab、刷新、Pending 表格 / 手机卡片 | ✅ 补上操作列：`Withdraw`、`Cancel Confirmed Journey`、`Cancel Post`，Accepted 绿色横幅（图 07） |
-| 6–9h | Received Applications 弹窗、Accept / Decline / Withdraw、完整联动及原因 | ✅ Accept 一次保存完成四路联动；Decline/Withdraw 只改目标记录；原因写入 `reason` 并显示在列表里 |
-| 9–11h | Manage a Record 校验、取消发布 / 同行、到期规则、恢复公开与历史管理 | ✅ 记录视图内直接执行 Cancel Post / Withdraw / Cancel Confirmed Journey，动作后原地刷新记录；终态不复活 |
-| 11–12h | 演示身份切换，全链验收 03、05–14、16、18；Git commit | ✅ 全链验收改为自动化：`tools/selfcheck.js` 130 项 + `tools/e2e.js` 182 项，全部真实执行 |
+计划把这一天切成六个时间块推进，开头两块的代码 DAY 1 已经写完，本日只做回归；其余按交付内容归并如下。
+
+- **单条 Apply、首次资料 `pendingIntent`、管理码生成、提交结果弹窗**：DAY 1 已完成，本日未改动，回归测试仍全绿。
+- **多选同类型限制、批量部分失败、逐条凭据与 Copy**：DAY 1 已完成，与单条共用 `applyToPosts`。
+- **My Activity 主视图、三 Tab、刷新、Pending 表格与手机卡片**：补上操作列 `Withdraw`、`Cancel Confirmed Journey`、`Cancel Post`，以及 Accepted 绿色横幅（图 07）。
+- **Received Applications 弹窗、Accept / Decline / Withdraw 与完整联动及原因**：Accept 一次保存完成四路联动；Decline/Withdraw 只改目标记录；原因写入 `reason` 并显示在列表里。
+- **Manage a Record 校验、取消发布 / 同行、到期规则、恢复公开与历史管理**：记录视图内直接执行 Cancel Post / Withdraw / Cancel Confirmed Journey，动作后原地刷新记录；终态不复活。
+- **演示身份切换与全链验收 03、05–14、16、18**：全链验收同样改为自动化，`tools/selfcheck.js` 130 项与 `tools/e2e.js` 182 项全部真实执行。
 
 **Gate D2 达成情况**：所有业务按钮都是真实操作且刷新不丢失；`docs/TEST_CASES.md` 里 08–13 已重测改写为 `PASS`。
 
 ## 2. 本日新增的规则（`js/rules.js`）
 
-| 函数 | 行为 |
-|---|---|
-| `canAccept / canDecline / canWithdraw / canCancelPost / canCancelJourney` | 五个**权限谓词**。UI 用它们决定按钮是否可用并取 `title` 说明，命令函数在提交时再调用同一个谓词——按钮状态与业务规则不可能不一致 |
-| `acceptApplication` | 一次计算并一次保存：本申请→`Accepted`；发布→`Confirmed` 并写 `confirmedApplicationId`（自动离开 Browse）；同一发布其他 `Pending`→`Not Selected`；**该申请人在任意其他发布上的全部 `Pending`→`Automatically Cancelled`** 并写明原因 |
-| `declineApplication` | 仅目标 `Pending`→`Declined` + 原因，发布保持 `Open` |
-| `withdrawApplication` | 仅本人 `Pending`→`Withdrawn` + 原因 |
-| `cancelPost` | 发布→`Cancelled` 并隐藏；其 `Pending`/`Accepted` 申请一并→`Cancelled` + 原因 |
-| `cancelJourney` | 已确认申请→`Cancelled`；发布未 `Cancelled` 且未过期→重新 `Open`、清空 `confirmedApplicationId`；旧终态记录不复活 |
-| `activeAcceptedFor` | “尚未结束的 Accepted” = 状态 `Accepted` 且发布未取消、**尚未到出发时刻**。据此拒绝“一个人两条有效确认”，也让已经发生过的行程不再阻挡新的申请 |
+- `canAccept / canDecline / canWithdraw / canCancelPost / canCancelJourney`：五个**权限谓词**。UI 用它们决定按钮是否可用并取 `title` 说明，命令函数在提交时再调用同一个谓词，按钮状态与业务规则不可能不一致。
+- `acceptApplication`：一次计算并一次保存，本申请→`Accepted`；发布→`Confirmed` 并写 `confirmedApplicationId`（自动离开 Browse）；同一发布其他 `Pending`→`Not Selected`；**该申请人在任意其他发布上的全部 `Pending`→`Automatically Cancelled`** 并写明原因。
+- `declineApplication`：仅目标 `Pending`→`Declined` 加原因，发布保持 `Open`。
+- `withdrawApplication`：仅本人 `Pending`→`Withdrawn` 加原因。
+- `cancelPost`：发布→`Cancelled` 并隐藏；其 `Pending` / `Accepted` 申请一并→`Cancelled` 加原因。
+- `cancelJourney`：已确认申请→`Cancelled`；发布未 `Cancelled` 且未过期→重新 `Open` 并清空 `confirmedApplicationId`；旧终态记录不复活。
+- `activeAcceptedFor`：“尚未结束的 Accepted” = 状态 `Accepted` 且发布未取消、**尚未到出发时刻**。据此拒绝“一个人两条有效确认”，也让已经发生过的行程不再阻挡新的申请。
 
 ## 3. 关键判定（写进代码的取舍，避免以后争论）
 
@@ -47,12 +45,12 @@
 
 按施工文档 §5 的 DAY 3 表格，剩下的是**收口与交付**，功能不必再加：
 
-1. **0–2h**：How It Works 已在 DAY 1 落地，DAY 3 只需复核六步文案与当前行为一致（现在 Accept 会连带自动取消，帮助里的第 5 步可再点明一次）。
-2. **2–4h 视觉收口**：对照 01–10 微调页头、间距、弹窗页脚、状态配色、头像与空状态；`docs/reference/` 放入原图后逐图比对。
-3. **4–6h 窄屏与键盘**：已有 390px 断言与键位断言，建议补测 720–1099px 两列断点与手机上的完整审批流程（点 Accept/Decline）。
-4. **6–8h 验收记录**：`docs/TEST_CASES.md` 已完成 20 项实填，DAY 3 需补 CSV/存储异常、双击、错误码的**人工**复核截图，并按需增补边界用例。
-5. **8–10h 连演两轮**：`Reset Demo Data` → 按 `docs/DEMO_SCRIPT.md` 九步连演两轮，统一动态日期/人物/记录号，再产出 01–10 的 PPT 截图（目前 `docs/screenshots/` 已有可用底图）。
-6. **10–13h 缓冲**：修 bug、写最终 README、Git 提交、打包源码与截图。
+1. **复核 How It Works**：该页已在 DAY 1 落地，这里只需复核六步文案与当前行为一致（现在 Accept 会连带自动取消，帮助里的第 5 步可再点明一次）。
+2. **视觉收口**：对照 01–10 微调页头、间距、弹窗页脚、状态配色、头像与空状态；`docs/reference/` 放入原图后逐图比对。
+3. **窄屏与键盘**：已有 390px 断言与键位断言，建议补测 720–1099px 两列断点与手机上的完整审批流程（点 Accept/Decline）。
+4. **验收记录**：`docs/TEST_CASES.md` 已完成 20 项实填，这里需补 CSV/存储异常、双击、错误码的**人工**复核截图，并按需增补边界用例。
+5. **连演两轮**：`Reset Demo Data` → 按 `docs/DEMO_SCRIPT.md` 九步连演两轮，统一动态日期/人物/记录号，再产出 01–10 的 PPT 截图（目前 `docs/screenshots/` 已有可用底图）。
+6. **缓冲项**：修 bug、写最终 README、Git 提交、打包源码与截图。
 
 ## 6. 复现验证
 

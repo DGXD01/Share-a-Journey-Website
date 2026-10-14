@@ -1,21 +1,21 @@
-# DAY 1 施工记录与 DAY 2 接续点
+# DAY 1 开发记录与 DAY 2 接续点
 
 > 对应施工文档 §5「DAY 1：搭建 01 / 02 / 03 / 04 的可用网页（约 11 小时）」与 §8.1 的 Gate D1。
 
-## 1. 时间块对照
+## 1. 当日完成内容
 
-| 计划时间块 | 计划内容 | 实际完成 |
-|---|---|---|
-| 0–1h | 冻结 CSS token、DOM ID、CSV 字段与演示人物，建立 Git，`?demo=1` 入口 | ✅ `css/style.css: :root` 与施工文档 §2.1 一致；DOM ID 全部沿用 §3.1；CSV 11 列含 `daysAhead`；Git 已初始化并提交 |
-| 1–3.5h | `index.html` + `style.css`：顶栏、双主视图、搜索卡、三列卡片、My Activity 快捷入口、dialog 共用外壳 | ✅ 全部完成，另含 My Activity 三标签、状态摘要与响应式 |
-| 3.5–5.5h | `store.js`：Fetch CSV、`daysAhead` 初始化、schema/localStorage、reset、演示身份切换 | ✅ 另含 CSV 兜底副本、结构校验、`reload()`、`storageAvailable()` 与提交失败上报 |
-| 5.5–8h | Your Details + Post a Journey：一次填写、双类型卡、只读联系方式、校验、发布凭据 | ✅ 完成（含 `pendingIntent` 恢复与放弃草稿二次确认） |
-| 8–10h | 筛选/排序、卡片渲染、详情弹窗、公开联系方式、单条 Apply | ✅ 完成（排序=出发时间升序；详情不发申请，Apply 才发） |
-| 10–11h | 手工验收需求 01、02、04、17；commit | ✅ 改为**自动化验收**：需求 01–07、14–18、20 全部由 `tools/e2e.js` 真实执行并留截图 |
+计划把这一天切成六个时间块推进，实际执行下来按交付内容归并如下。
+
+- **冻结 CSS token、DOM ID、CSV 字段与演示人物**：`css/style.css` 的 `:root` 与施工文档 §2.1 一致；DOM ID 全部沿用 §3.1；CSV 11 列含 `daysAhead`；Git 已初始化并提交，`?demo=1` 入口可用。
+- **`index.html` + `style.css`**：顶栏、双主视图、搜索卡、三列卡片、My Activity 快捷入口、dialog 共用外壳全部完成，另外加了 My Activity 三标签、状态摘要与响应式。
+- **`store.js`**：Fetch CSV、`daysAhead` 初始化、schema 与 localStorage 处理、reset、演示身份切换，另外补了 CSV 兜底副本、结构校验、`reload()`、`storageAvailable()` 和提交失败上报。
+- **Your Details 与 Post a Journey**：一次填写、双类型卡、只读联系方式、校验、发布凭据，另外含 `pendingIntent` 恢复和放弃草稿的二次确认。
+- **筛选/排序、卡片渲染、详情弹窗、公开联系方式、单条 Apply**：排序按出发时间升序；详情弹窗不发申请，只有 Apply 才发。
+- **验收方式**：原计划手工验收需求 01、02、04、17，实际改为自动化验收，需求 01–07、14–18、20 全部由 `tools/e2e.js` 真实执行并留截图。
 
 **Gate D1 达成情况**：刷新后新增发布与申请仍在（e2e 有专门一步 reload 验证）；主界面结构与图 01–04 一致（见 `docs/screenshots/`）。
 
-## 2. 施工中实际发现并修复的缺陷（都由验证脚本抓到，不是事后补记）
+## 2. 开发过程中发现并修复的缺陷（都由验证脚本抓到，不是事后补记）
 
 | # | 现象 | 根因 | 修复 |
 |---|---|---|---|
@@ -36,19 +36,17 @@
 6. **新增 `tools/`**：施工文档目录里没有，但 Gate D1 需要可复现的证据，故加入静态服务器与两套断言脚本（不进页面运行时）。
 7. **效果图原图未收到**：按施工文档 §2 的文字规格实现，`docs/reference/` 已预留位置（见 `docs/VISUAL_REFERENCE.md`）。
 
-## 4. DAY 2 接续点（已完成 —— 实施记录见 `DAY2_BUILD_NOTES.md`）
+## 4. DAY 2 接续点（已完成，实施记录见 `docs/DAY2_BUILD_NOTES.md`）
 
 > 本节原本是 DAY 1 结束时写给 DAY 2 的施工清单。DAY 2 已按此实施，实际做法与差异记录在 `docs/DAY2_BUILD_NOTES.md`，下面保留原始清单以便对照。
 
-在 `js/rules.js` 增加以下纯函数，全部遵循「校验 → 计算 nextState → 返回结果」的同一形态，由 `app.js` 一次 `commitState`：
+在 `js/rules.js` 增加以下纯函数（施工文档 §4.3），全部遵循「校验 → 计算 nextState → 返回结果」的同一形态，由 `app.js` 一次 `commitState`：
 
-| 函数 | 需要做的联动（施工文档 §4.3） |
-|---|---|
-| `acceptApplication(state, {applicationId})` | 校验操作者是发布者、发布 `Open` 未过期、申请 `Pending`、申请人无未结束的 `Accepted`；本申请→`Accepted`；发布→`Confirmed` 且 `confirmedApplicationId` 记录；同一发布其他 `Pending`→`Not Selected`；**该申请人在其他发布的全部 `Pending`→`Automatically Cancelled` 并写 `reason`**；一次提交 |
-| `declineApplication(state, {applicationId})` | 仅目标 `Pending`→`Declined` |
-| `withdrawApplication(state, {applicationId})` | 仅本人 `Pending`→`Withdrawn` |
-| `cancelPost(state, {postId})` | 发布→`Cancelled` 并隐藏；其相关未结束申请→`Cancelled` |
-| `cancelJourney(state, {applicationId})` | 已确认申请→`Cancelled`；发布未 `Cancelled` 且未过期→重新 `Open`；旧终态不复活 |
+- `acceptApplication(state, {applicationId})`：校验操作者是发布者、发布 `Open` 未过期、申请 `Pending`、申请人无未结束的 `Accepted`；本申请→`Accepted`；发布→`Confirmed` 且 `confirmedApplicationId` 记录；同一发布其他 `Pending`→`Not Selected`；**该申请人在其他发布的全部 `Pending`→`Automatically Cancelled` 并写 `reason`**；一次提交。
+- `declineApplication(state, {applicationId})`：仅目标 `Pending`→`Declined`。
+- `withdrawApplication(state, {applicationId})`：仅本人 `Pending`→`Withdrawn`。
+- `cancelPost(state, {postId})`：发布→`Cancelled` 并隐藏；其相关未结束申请→`Cancelled`。
+- `cancelJourney(state, {applicationId})`：已确认申请→`Cancelled`；发布未 `Cancelled` 且未过期→重新 `Open`；旧终态不复活。
 
 界面侧只需把已就绪的结构接上（**不需要改 DOM ID**）：
 
@@ -60,9 +58,9 @@
 ## 5. 复现验证
 
 ```bash
-node tools/selfcheck.js            # 76 passed, 0 failed
+node tools/selfcheck.js            # 76 passed, 0 failed（DAY 1 收尾时的用例数）
 node tools/serve.js 5599           # 后台常驻
 node tools/e2e.js                  # 123 passed, 0 failed（真 Chrome + 截图）
 ```
 
-`tools/e2e.js` 每次使用全新的临时浏览器用户目录，因此每次都是“冷启动 + 空 localStorage”，结论可重复。
+`tools/e2e.js` 每次使用全新的临时浏览器用户目录，因此每次都是“冷启动 + 空 localStorage”，结论可重复。用例数在 DAY 2 已扩充到 `selfcheck` 130 项、`e2e` 182 项，见 `docs/DAY2_BUILD_NOTES.md`。

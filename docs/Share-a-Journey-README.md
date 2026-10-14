@@ -58,8 +58,8 @@ WebAssignment1/                     ← 仓库根目录（即 Live Server 根目
 │   ├── VISUAL_REFERENCE.md         # 效果图 01–10 → 实现映射与视觉取舍
 │   ├── TEST_CASES.md               # 20 项实测记录（PASS / DEMO_ONLY）与证据索引
 │   ├── DEMO_SCRIPT.md              # PPT 演示剧本九步（含可用管理码）
-│   ├── DAY1_BUILD_NOTES.md         # DAY 1 施工记录与缺陷修复
-│   ├── DAY2_BUILD_NOTES.md         # DAY 2 施工记录、状态机取舍与 DAY 3 接续点
+│   ├── DAY1_BUILD_NOTES.md         # DAY 1 开发记录与缺陷修复
+│   ├── DAY2_BUILD_NOTES.md         # DAY 2 开发记录、状态机取舍与 DAY 3 接续点
 │   ├── reference/                  # 放 01–10 效果图 PNG（设计参考，不参与运行）
 │   └── screenshots/                # 真机截图证据（自动化生成）
 └── tools/
