@@ -619,10 +619,10 @@ SJ.app = (function () {
 
   function handleReset() {
     SJ.ui.confirmAsk({
-      title: 'Reset the demo data?',
+      title: 'Reset the stored data?',
       message: 'Every journey, application and management code created in this browser is replaced by the original six seed journeys. This cannot be undone.',
       note: 'The seed dates are recalculated so nothing starts in the past.',
-      confirmLabel: 'Reset Demo Data',
+      confirmLabel: 'Reset Data',
       cancelLabel: 'Keep my data'
     }).then(function (confirmed) {
       if (!confirmed) { return; }
@@ -639,7 +639,7 @@ SJ.app = (function () {
         if (isDemoMode) { applyDemoDefaultPerson(null); }
         renderAll();
         SJ.ui.renderSeedNotice(SJ.store.seedSource(), '');
-        SJ.ui.toast('Demo data reset to the six seed journeys.', 'success');
+        SJ.ui.toast('Data reset to the six original journeys.', 'success');
       });
     });
   }
@@ -849,7 +849,7 @@ SJ.app = (function () {
 
     SJ.store.init().then(function (result) {
       if (!result.ok) {
-        SJ.ui.renderSeedNotice(null, 'The demo data could not be initialised, so the page stays empty: ' + result.error, 'error');
+        SJ.ui.renderSeedNotice(null, 'The starting data could not be initialised, so the page stays empty: ' + result.error, 'error');
         $('journey-grid').hidden = true;
         $('empty-state').hidden = true;
         $('browse-hint').hidden = true;

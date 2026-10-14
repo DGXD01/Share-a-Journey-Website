@@ -311,7 +311,7 @@ SJ.rules = (function () {
     }
     var profile = profileById(currentState, profileId);
     if (!profile) {
-      return { ok: false, error: 'That demo person does not exist in the current snapshot.' };
+      return { ok: false, error: 'That person does not exist in the current snapshot.' };
     }
     next.activeProfileId = profileId;
     return { ok: true, state: next, profile: profile };

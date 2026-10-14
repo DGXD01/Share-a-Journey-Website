@@ -145,7 +145,7 @@ SJ.store = (function () {
     var today = nzNow().date;
     var records = rowsToObjects(parseCsv(csvText));
     if (records.length === 0) {
-      throw new Error('The journey seed table is empty, so no demo journeys could be created.');
+      throw new Error('The journey table is empty, so no journeys could be created.');
     }
 
     var next = {
@@ -186,7 +186,7 @@ SJ.store = (function () {
         ownerProfileId: owner ? owner.profileId : null,
         ownerAlias: owner ? owner.alias : '',
         postType: postTypeOf(record.postType),
-        name: record.name || (owner ? owner.name : 'Demo publisher'),
+        name: record.name || (owner ? owner.name : 'Journey publisher'),
         phone: record.phone || '',
         email: record.email || '',
         origin: record.origin || '',
@@ -244,17 +244,17 @@ SJ.store = (function () {
     try {
       raw = window.localStorage.getItem(STORAGE_KEY);
     } catch (err) {
-      return { ok: false, error: 'This browser refused access to local storage, so the demo data cannot be read.' };
+      return { ok: false, error: 'This browser refused access to local storage, so the saved data cannot be read.' };
     }
     if (!raw) { return { ok: true, state: null }; }
     var parsed;
     try {
       parsed = JSON.parse(raw);
     } catch (err) {
-      return { ok: false, error: 'The saved demo snapshot is damaged. Use Reset Demo Data to rebuild it.' };
+      return { ok: false, error: 'The saved data is damaged. Use Reset Data to rebuild it.' };
     }
     if (!isValidState(parsed)) {
-      return { ok: false, error: 'The saved demo snapshot uses an older or unknown format. Use Reset Demo Data to rebuild it.' };
+      return { ok: false, error: 'The saved data uses an older or unknown format. Use Reset Data to rebuild it.' };
     }
     return { ok: true, state: parsed };
   }
@@ -350,7 +350,7 @@ SJ.store = (function () {
       return { ok: false, error: stored.error };
     }
     if (!stored.state) {
-      return { ok: false, error: 'There is no saved snapshot in this browser yet. Post or apply once, or reset the demo data.' };
+      return { ok: false, error: 'There is no saved data in this browser yet. Post or apply once, or use Reset Data.' };
     }
     state = stored.state;
     return { ok: true };

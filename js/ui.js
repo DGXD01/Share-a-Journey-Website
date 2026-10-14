@@ -112,7 +112,7 @@ SJ.ui = (function () {
       ? (SJ.rules.profileIsComplete(profile)
         ? 'Saved contact: ' + profile.phone + ' · ' + profile.email
         : 'No saved contact details yet — they are asked for on your first action.')
-      : 'No demo person is active. Your details are saved from the first action.';
+      : 'No person is active. Your details are saved from the first action.';
 
     var select = $('demo-person-select');
     if (options.showDemoTools) {
@@ -301,7 +301,7 @@ SJ.ui = (function () {
       ? (SJ.rules.profileIsComplete(profile)
         ? 'Showing records of ' + profile.name + ' (' + profile.phone + ' · ' + profile.email + ').'
         : 'Showing records of ' + profile.name + '. No contact details are saved yet — they are asked for on the next post or application.')
-      : 'No person is selected. Use the demo identity switch, or post or apply once to create your local profile.';
+      : 'No person is selected. Use the identity switch, or post or apply once to create your local profile.';
 
     $('tab-count-posts').textContent = activity.counts.posts;
     $('tab-count-applications').textContent = activity.counts.applications;
@@ -320,7 +320,7 @@ SJ.ui = (function () {
       $(name + '-panel').hidden = name !== uiState.activityTab;
     });
 
-    $('activity-scope-note').textContent = 'Local demo note: every row below is read from this browser\'s storage. '
+    $('activity-scope-note').textContent = 'Every row below is read from this browser\'s storage. '
       + 'Approvals, declines, withdrawals and cancellations are real state changes and are saved in the same snapshot the moment you use them.';
   }
 
@@ -864,12 +864,12 @@ SJ.ui = (function () {
       $('results-dialog-eyebrow').textContent = 'Not saved';
       $('results-dialog-title').textContent = 'Nothing was saved';
       $('results-dialog-intro').textContent = 'The operation was rejected before any record changed, so the numbers below would be misleading.';
-      $('results-note').textContent = 'Fix the storage problem and try again — the demo never reports a success it did not store.';
+      $('results-note').textContent = 'Fix the storage problem and try again — a success is only reported once it has been stored.';
     } else if (isPost) {
       $('results-dialog-eyebrow').textContent = 'Published';
       $('results-dialog-title').textContent = 'Journey published';
       $('results-dialog-intro').textContent = 'This journey is now on the public list. Keep the record ID and management code to manage it later.';
-      $('results-note').textContent = 'Use the record ID and management code to reopen this record in this local demo.';
+      $('results-note').textContent = 'Use the record ID and management code to reopen this record at any time.';
       $('results-view-activity').textContent = 'View My Posts';
       $('results-view-activity').setAttribute('data-tab', 'my-posts');
     } else {
@@ -880,7 +880,7 @@ SJ.ui = (function () {
       $('results-dialog-intro').textContent = failureCount === 0
         ? 'Each application is a separate record with its own record ID and management code. All statuses are Pending until the publisher decides.'
         : failureCount + ' of ' + results.length + ' selected journeys could not be applied to. The reasons are listed with each row.';
-      $('results-note').textContent = 'Use the record ID and management code to reopen a record in this local demo.';
+      $('results-note').textContent = 'Use the record ID and management code to reopen a record at any time.';
       $('results-view-activity').textContent = 'View My Applications';
       $('results-view-activity').setAttribute('data-tab', 'my-applications');
     }
@@ -953,7 +953,7 @@ SJ.ui = (function () {
     var isOwner = !!profile && post.ownerProfileId === profile.profileId;
 
     if (!isOwner) {
-      body.appendChild(el('p', 'notice notice-warning', 'Only the publisher of this journey can process its applications. Switch to ' + post.name + ' with the demo identity control to try it.'));
+      body.appendChild(el('p', 'notice notice-warning', 'Only the publisher of this journey can process its applications. Switch to ' + post.name + ' with the identity control to try it.'));
       return;
     }
 

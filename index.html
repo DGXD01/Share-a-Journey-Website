@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Share-a-Journey · Group 7 local demo</title>
-<meta name="description" content="Share-a-Journey local demo: post a journey, browse available trips, apply for a seat and manage records in this browser only.">
+<title>Share-a-Journey · Group 7</title>
+<meta name="description" content="Share-a-Journey: post a journey, browse available trips, apply for a seat and keep every record in one place.">
 <link rel="icon" href="assets/logo.svg" type="image/svg+xml">
 <link rel="stylesheet" href="css/style.css">
 </head>
@@ -25,7 +25,7 @@
       </span>
       <span class="brand-text">
         <strong>Share-a-Journey</strong>
-        <span>Group 7 · local demo</span>
+        <span>Group 7 · community ride sharing</span>
       </span>
     </a>
 
@@ -41,18 +41,18 @@
         <span aria-hidden="true">+</span> Post a Journey
       </button>
 
-      <div class="person-chip" id="current-person" title="Current local demo identity">
+      <div class="person-chip" id="current-person" title="Current identity">
         <span class="avatar" id="current-person-avatar" aria-hidden="true">?</span>
         <span class="person-chip-text">
-          <span class="person-chip-label">Demo person</span>
+          <span class="person-chip-label">Current person</span>
           <strong id="current-person-name">Not selected</strong>
         </span>
       </div>
 
       <div class="demo-tools" id="demo-tools" hidden>
         <label class="field-inline" for="demo-person-select">Switch identity</label>
-        <select id="demo-person-select" aria-label="Switch demo person"></select>
-        <button type="button" class="btn btn-ghost" id="demo-reset-btn">Reset Demo Data</button>
+        <select id="demo-person-select" aria-label="Switch person"></select>
+        <button type="button" class="btn btn-ghost" id="demo-reset-btn">Reset Data</button>
       </div>
     </div>
   </div>
@@ -199,7 +199,7 @@
 </main>
 
 <footer class="app-footer">
-  <p>Group 7 design concept · Fictional data · Local demo — nothing on this page leaves this browser.</p>
+  <p>Group 7 · Sample data · Nothing on this page leaves your browser.</p>
 </footer>
 
 <!-- ============================ Dialog shell: Your Details ============================ -->
@@ -237,7 +237,7 @@
         <h3>Who can see these details</h3>
         <ul>
           <li>Publishers see your name, phone and email only for journeys you applied to.</li>
-          <li>Everything is stored in this browser's local demo storage — there is no server copy.</li>
+          <li>Everything is stored in this browser's local storage — there is no server copy.</li>
           <li>Sharing details does not confirm a ride: the publisher still has to accept your application.</li>
         </ul>
       </div>
@@ -375,7 +375,7 @@
       <div id="results-body"></div>
     </div>
     <footer class="dialog-footer">
-      <p class="dialog-note" id="results-note">Keep the record ID and management code: they reopen this record in this local demo.</p>
+      <p class="dialog-note" id="results-note">Keep the record ID and management code: they reopen this record at any time.</p>
       <div class="footer-actions">
         <button type="button" class="btn btn-secondary" data-close-dialog>Close</button>
         <button type="button" class="btn btn-primary" id="results-view-activity">View My Applications</button>
@@ -390,7 +390,7 @@
     <header class="dialog-header">
       <p class="eyebrow">Record access</p>
       <h2 id="manage-dialog-title">Manage a Record</h2>
-      <p class="dialog-intro">Enter the record ID and the management code you saved. Use the record ID and code to reopen it in this local demo.</p>
+      <p class="dialog-intro">Enter the record ID and the management code you saved to reopen the record.</p>
       <button type="button" class="dialog-close" data-close-dialog aria-label="Close this dialog">&times;</button>
     </header>
     <div class="dialog-body">
@@ -454,7 +454,7 @@
         <li><strong>Browse and select.</strong> Filter by origin, destination, date and post type. You can select several journeys of the same type and apply in one batch.</li>
         <li><strong>Every application is its own record.</strong> In a batch, each journey still gets a separate record ID, management code and status.</li>
         <li><strong>The publisher decides.</strong> An application stays <em>Pending</em> and the journey stays public until the publisher accepts one applicant.</li>
-        <li><strong>Manage with your code.</strong> Use the record ID and code to reopen a record in this local demo, and use My Activity to follow your own posts and applications.</li>
+        <li><strong>Manage with your code.</strong> Use the record ID and code to reopen a record, and use My Activity to follow your own posts and applications.</li>
       </ol>
       <div class="info-panel">
         <h3>Who sees your contact details</h3>
@@ -465,16 +465,16 @@
         </ul>
       </div>
       <div class="info-panel info-panel-muted">
-        <h3>This local demo, honestly</h3>
+        <h3>How this page stores your data</h3>
         <ul>
           <li>Everything is stored in <strong>this browser</strong> on <strong>this device</strong>. Another browser or another computer starts empty.</li>
           <li>Press <strong>Refresh Status</strong> (or reload the page) to re-read the local snapshot. There is no server pushing updates.</li>
-          <li>Two people cannot really be online at the same time here; the demo simulates them one after another with the demo identity switch.</li>
+          <li>Two people cannot be online on the same device at the same time; switch identities to act as each traveller in turn.</li>
         </ul>
       </div>
     </div>
     <footer class="dialog-footer">
-      <p class="dialog-note">Add <code>?demo=1</code> to the address to switch between the demo people and to reset the demo data.</p>
+      <p class="dialog-note">Append <code>?demo=1</code> to the address to reveal the identity switch and the reset control.</p>
       <div class="footer-actions">
         <button type="button" class="btn btn-primary" data-close-dialog>Close</button>
       </div>
