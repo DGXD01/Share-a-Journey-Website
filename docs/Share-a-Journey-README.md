@@ -73,9 +73,9 @@ WebAssignment1/                     ← 仓库根目录（即 Live Server 根目
 ## 4. 自检与验收证据
 
 ```bash
-node tools/selfcheck.js     # 130 passed, 0 failed —— 纯逻辑（CSV/日期/状态机/审批联动/管理码/到期）
+node tools/selfcheck.js     # 130 passed, 0 failed（纯逻辑：CSV/日期/状态机/审批联动/管理码/到期）
 node tools/serve.js 5599    # 另开一个终端
-node tools/e2e.js           # 182 passed, 0 failed —— 真浏览器全流程 + 截图
+node tools/e2e.js           # 182 passed, 0 failed（真浏览器全流程 + 截图）
 ```
 
 `tools/e2e.js` 会在真实 Chrome/Edge 上完整走一遍演示剧本：筛选、选卡、批量申请、刷新页面验证持久化、发布新行程、管理码错误/正确、**发布者同意并观察 Not Selected 与自动取消**、取消已确认同行后发布恢复公开、拒绝、撤回、取消发布、手机窄屏、键盘 Escape 与方向键、Reset，并断言**控制台零异常**。截图输出到 `docs/screenshots/`。
