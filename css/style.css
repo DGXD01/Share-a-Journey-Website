@@ -129,10 +129,15 @@ code {
   color: inherit;
   flex: 0 0 auto;
 }
-.brand-mark { display: flex; }
+.brand-mark { display: flex; align-items: center; }
+.brand-mark-img { display: block; height: 34px; width: auto; max-width: 100%; }
 .brand-text { display: flex; flex-direction: column; line-height: 1.15; }
 .brand-text strong { font-size: 1.02rem; letter-spacing: -.01em; }
 .brand-text span { font-size: .74rem; color: var(--muted); }
+
+@media (max-width: 720px) {
+  .brand-mark-img { height: 30px; }
+}
 
 .main-nav {
   display: flex;

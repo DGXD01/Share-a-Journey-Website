@@ -323,7 +323,7 @@ Share-a-Journey/
 │   ├── ui.js                     # 视图、卡片、弹窗、状态
 │   └── app.js                    # 事件、初始化、模式切换
 ├── data/posts_seed.csv          # 虚构示例行程
-├── assets/                     # 如需 logo.svg / 轻量 SVG 图标
+├── assets/                     # 品牌图标 favicon.png / share-a-journey-mark.png、首页背景 journey-backdrop.jpg
 ├── docs/
 │   ├── REQUIREMENTS.md          # 完整原需求
 │   ├── VISUAL_REFERENCE.md      # 01–10 场景映射和视觉取舍
